@@ -1,0 +1,30 @@
+/static StaticR Static appStatic
+/auth   AuthR   Auth   getAuth
+
+-- Web Pages
+/ HomePageR GET
+/chat ChatPageR GET
+/chat/stream ChatStreamPageR GET
+/mod ModPageR GET !mod
+/streamer StreamerPageR GET !mod
+/admin AdminPageR GET !admin
+
+
+-- Web Socket
+/ws WSR GET
+
+-- API
+/api ApiR:
+  /chat ChatR POST
+  /mod ModR POST
+  /profile ProfileR:
+    / MyProfileR GET POST
+    /logout LogOutR GET
+  /register RegisterR:
+    /check RegCheckR POST
+    /twitch RegTwitchR GET
+--  /streamstatus StreamStatusR:
+--    /twitch StreamSTwitchR POST
+  /subscribe SubscribeR:
+    / MySubscribeR POST
+    /check GiftSubCheckR POST

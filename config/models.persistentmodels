@@ -1,0 +1,215 @@
+-- By default this file is used by `persistFileWith` in Model.hs (which is imported by Foundation.hs)
+-- Syntax for this file here: https://github.com/yesodweb/persistent/blob/master/docs/Persistent-entity-syntax.md
+
+User
+  -- Account
+  creationTime          Word
+  email                 Text
+  lastNameChangeTime    Word
+  numMonthsSubbed       Word
+  season                Word
+  -- Connections
+  -- Twitch
+  twitchAccessToken     Text Maybe
+  twitchRefreshToken    Text Maybe
+  twitchId              Text Maybe
+  twitchLogin           Text Maybe
+  twitchEmail           Text Maybe
+  twitchCreated         Word Maybe
+  twitchFollowTime      Word Maybe
+  twitchIsSubscriber    Word Maybe
+  -- Google
+  googleId              Text Maybe
+
+  -- Profile
+  username              Text
+  role                  RoleId Maybe
+  pronouns              Text Maybe
+  points                Word
+  -- Badges
+  firstBadge            Text Maybe
+  secondBadge           Text Maybe
+  badgeCollection       Text -- '%' separated badge names until use of arrays
+  -- Name Color
+  defaultColor          Text Maybe -- null = RandomNameColor
+  colorMode             Text -- RGB, LRGB, HSI, etc
+  colorLeftH            Word Maybe -- Hue
+  colorLeftCL           Word Maybe -- Chroma Light Mode
+  colorLeftCD           Word Maybe -- Chroma Dark Mode
+  colorLeftVL           Word Maybe -- value Light Mode
+  colorLeftVD           Word Maybe -- value Dark Mode
+  colorRightH           Word Maybe
+  colorRightCL          Word Maybe
+  colorRightCD          Word Maybe
+  colorRightVL          Word Maybe
+  colorRightVD          Word Maybe
+
+  UniqueEmail email
+  UniqueUsername username
+  UniqueTwitchId twitchId !force
+  UniqueGoogleId googleId !force
+  deriving Show
+
+
+
+
+Role
+  name  Text
+  power Word
+
+  deriving Show
+
+
+
+
+UserMessage
+  sender    UserId
+  chat      Word -- 1 == Main Chat, 2 == Mod Chat
+  timestamp Word
+  message   Text
+
+
+
+
+DirectMessage
+  sender            UserId
+  receiver          UserId
+  timestamp         Word
+  message           Text
+  --read              Bool
+  deletedBySender   Bool
+  deletedByReceiver Bool
+
+
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Creator
+
+
+
+
+Creator
+  name Text
+  userId UserId
+  profileImage Text
+
+  UniqueCreator userId
+  deriving Show
+
+
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Payments
+
+Payment
+  userId   UserId Maybe
+  amount   Double
+  currency Text
+
+  deriving Show
+
+
+
+-- Donation
+Dono
+  paymentId PaymentId
+  name      Text
+  message   Text
+
+  UniqueDono paymentId
+  deriving Show
+
+
+
+-- Subscription
+Sub
+  paymentId       PaymentId
+  userId          UserId -- receiver
+  gifter          UserId Maybe -- maybe purchaser
+  tier            Word
+  is3MonthPackage Bool
+  message         Text
+  source          Text
+
+  --UniqueSub paymentId
+  deriving Show
+
+
+
+-- Active Subscription
+ActiveSub
+  userId       UserId
+  subscription SubId -- Associated Subscription
+  recurring    Bool
+  endTime      Word
+
+  UniqueSubber userId
+  UniqueSubscription subscription
+  deriving Show
+
+
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Images
+
+Image
+  width Double
+  height Double
+  url Double
+
+  UniqueURl url
+  deriving Show
+
+
+
+
+Emote
+  name Text
+  image ImageId
+
+  UniqueEmoteName name
+  UniqueImage image
+  deriving Show
+
+
+
+
+GlobalEmote
+  emote EmoteId
+
+  UniqueGlobalEmote emote
+  deriving Show
+
+
+
+
+SubEmote
+  emote EmoteId
+
+  UniqueSubEmote emote
+  deriving Show
+
+
+
+
+Badge
+
+
+SeasonBadge
+
+
+SubBadge
+
+RoleBadge

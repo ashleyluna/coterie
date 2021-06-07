@@ -1,8 +1,10 @@
 module Internal.Internal exposing (..)
 
+import Char.Extra as CharE exposing (..)
 import Html.Attributes as HtmlA
 import Http
 import Json.Encode as JE
+import List.Extra as ListE exposing (..)
 import Parser exposing ((|.),(|=))
 import Process
 import Task
@@ -29,13 +31,9 @@ listIf b ls = if b then ls else []
 cmdIf b c = if b then c else Cmd.none
 
 flip : (a -> b -> c) -> (b -> a -> c)
-flip f a b = f b a
+flip f b a = f a b
 flip2 : (a -> b -> c -> d) -> (b -> c -> a -> d)
-flip2 f a b c = f c a b
-flip3 : (a -> b -> c -> d -> e) -> (b -> c -> d -> a -> e)
-flip3 f a b c d = f d a b c
-flip4 : (a -> b -> c -> d -> e -> f) -> (b -> c -> d -> e -> a -> f)
-flip4 f a b c d e = f e a b c d
+flip2 f b c a = f a b c
 
 -- Cmd
 
@@ -69,6 +67,9 @@ showNumMetric n = if n < 1000 then String.fromInt n
                   else String.fromInt (n // 1000000) ++ "." ++ String.left 2 (String.fromInt (remainderBy 1000000 n)) ++ "M"
 
 
+lastWord str = String.fromList <| List.reverse <|
+               ListE.takeWhile (not << CharE.isSpace) <|
+               String.toList <| String.reverse str
 
 
 apiUrl url =
@@ -130,7 +131,7 @@ defaultChromaColor color = case color of
 
 initialHomePageInfo = HomePage
   {streamScreenSize = False -- not <| List.member liveInfo.streamStatus [Nothing, Just Offline]
-  ,subPage = HomeSubPageMain -- initialHomeSubPageSupportInfo
+  ,subPage = MainMainBoxPage -- initialHomeSubPageSupportInfo
   ,history = []
   ,unappendHistory = Nothing
   ,initiateSubPageSliding = False
@@ -148,96 +149,52 @@ initialHomePageInfo = HomePage
     --                 ,numberOfRandomGiftSubs = 5
     --                 ,page2Info = Just {month3Package = False
     --                                   ,message = ""}}
-  ,chatBox =
-    {chatBoxOverlay = NoChatBoxOverlay
-    ,elmBar = {viewport = Nothing
-              ,infiniteScroll = Just {direction = False, stack = 1}
-              ,autoScroll = Nothing
-              ,content = ()}
-    --,chatBoxOverlayHistory : Maybe ChatBoxOverlay
-    ,initiateChatBoxOverlayHeaderSliding = False
-    ,chatBoxSlideDirection = True
-    ,chatRoom =
-      {chatRoomOverlay = NoChatRoomOverlay
-      ,mentionBox = False
-      ,input = ""
-      ,messageRoom =
-        {viewport = Nothing
-        ,infiniteScroll = Nothing
-        ,autoScroll = Just True
-        ,content = {highlightedUsers = []
-                   ,hoverUsername = False}}}}}
+  ,chatBox = initialChatBox}
 initialChatPageInfo = ChatPage
-  {chatBox =
-    {chatBoxOverlay = NoChatBoxOverlay
-    ,elmBar = {viewport = Nothing
-              ,infiniteScroll = Just {direction = False, stack = 1}
-              ,autoScroll = Nothing
-              ,content = ()}
-    --,chatBoxOverlayHistory : Maybe ChatBoxOverlay
-    ,initiateChatBoxOverlayHeaderSliding = False
-    ,chatBoxSlideDirection = True
-    ,chatRoom =
-      {chatRoomOverlay = NoChatRoomOverlay
-      ,mentionBox = False
-      ,input = ""
-      ,messageRoom =
-        {viewport = Nothing
-        ,infiniteScroll = Nothing
-        ,autoScroll = Just True
-        ,content = {highlightedUsers = []
-                   ,hoverUsername = False}}}}}
+  {chatBox = initialChatBox}
 
 initialChatStreamPageInfo = ChatStreamPage
-  {messageRoom =
-     {viewport = Nothing
-     ,infiniteScroll = Nothing
-     ,autoScroll = Just True
-     ,content = {highlightedUsers = []
-                ,hoverUsername = False}}}
+  {messageRoom = initialMessageRoom}
 
 initialStreamerPageInfo = StreamerPage
-  {chatBox =
-    {chatBoxOverlay = NoChatBoxOverlay
-    ,elmBar = {viewport = Nothing
-              ,infiniteScroll = Just {direction = False, stack = 1}
-              ,autoScroll = Nothing
-              ,content = ()}
-    --,chatBoxOverlayHistory : Maybe ChatBoxOverlay
-    ,initiateChatBoxOverlayHeaderSliding = False
-    ,chatBoxSlideDirection = True
-    ,chatRoom =
-      {chatRoomOverlay = NoChatRoomOverlay
-      ,mentionBox = False
-      ,input = ""
-      ,messageRoom =
-        {viewport = Nothing
-        ,infiniteScroll = Nothing
-        ,autoScroll = Just True
-        ,content = {highlightedUsers = []
-                   ,hoverUsername = False}}}}
-  ,modRoom =
-    {chatRoomOverlay = NoChatRoomOverlay
-    ,mentionBox = False
-    ,input = ""
-    ,messageRoom =
-      {viewport = Nothing
-      ,infiniteScroll = Nothing
-      ,autoScroll = Just True
-      ,content = {highlightedUsers = []
-                 ,hoverUsername = False}}}
-  ,atMessageRoom =
-    {viewport = Nothing
-    ,infiniteScroll = Nothing
-    ,autoScroll = Just True
-    ,content = {highlightedUsers = []
-               ,hoverUsername = False}}
+  {chatBox = initialChatBox
+  ,modRoom = initialChatRoom
+  ,atMessageRoom = initialMessageRoom
   ,streamStatus = Just True -- Nothing == Offline, Just False == Hosting, Just True == Streaming
   ,streamingTitle = ""
   ,hostingSearch = ""
   ,hostingCheck = 0
   }
 
+initialChatBox =
+  {chatBoxOverlay = NoChatBoxOverlay
+  ,elmBar = initialElmBar
+  --,chatBoxOverlayHistory : Maybe ChatBoxOverlay
+  ,initiateChatBoxOverlayHeaderSliding = False
+  ,chatBoxSlideDirection = True
+  ,chatRoom = initialChatRoom}
+
+initialChatRoom =
+  {chatRoomOverlay = NoChatRoomOverlay
+  ,mentionBox = Nothing
+  ,inputFocused = False
+  ,input = ""
+  ,messageRoom = initialMessageRoom}
+
+initialMessageRoom =
+  {viewport = Nothing
+  ,infiniteScroll = Nothing
+  ,autoScroll = Just True
+  ,content = {highlightedUsers = []
+             ,hoverUsername = False}}
+
+initialElmBar =
+  {viewport = Nothing
+  ,infiniteScroll = Just {direction = False, stack = 1}
+  ,autoScroll = Nothing
+  ,content = ()}
+
+initialMainMainBoxPageInfo = MainMainBoxPage
 
 initialHomeSubPageSupportInfo = HomeSubPageSupport
   {headerPosition = 1}
@@ -264,8 +221,7 @@ initialHomeSubPageAgreementInfo = HomeSubPageAgreement
 isSubPageOn : HomeSubPage -> HomeSubPage -> Bool
 isSubPageOn subPage mainBoxPage =
   case (subPage, mainBoxPage) of
-    (HomeSubPageMain, HomeSubPageMain) -> True
-    (HomeSubPageMutualAid _, HomeSubPageMutualAid _) -> True
+    (MainMainBoxPage, MainMainBoxPage) -> True
     (HomeSubPageSupport _, HomeSubPageSupport _) -> True
     (HomeSubPageDonate _, HomeSubPageDonate _) -> True
     (HomeSubPageSubscribe _, HomeSubPageSubscribe _) -> True

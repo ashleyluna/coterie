@@ -10,7 +10,6 @@ import Time exposing (Posix, Zone)
 
 import Element exposing (Color)
 
-import Accessors exposing (..)
 
 import Internal.Chat exposing (..)
 import Internal.Internal exposing (..)
@@ -144,7 +143,7 @@ updateHomePageInfo model msg homePageInfo =
            _ -> homePageInfo)
          <| cmdMsg <| HomePageMsg <| InitiateSubPageSlide True
        SetSubPageDefault direction -> pair (setHomePageInfo
-         {homePageInfo | subPage = HomeSubPageMain
+         {homePageInfo | subPage = MainMainBoxPage
                        , unappendHistory = Just homePageInfo.subPage
                        , history = []})
          <| cmdMsg <| HomePageMsg <| InitiateSubPageSlide direction

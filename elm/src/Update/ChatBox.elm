@@ -1,12 +1,13 @@
 module Update.ChatBox exposing (..)
 
+import Char.Extra as CharE exposing (..)
 import Http
 import Json.Decode as JD
 import Json.Encode as JE
+import List.Extra as ListE exposing (..)
 import Task
 import Time exposing (Posix, Zone)
 
-import Accessors exposing (..)
 import String.Extra exposing (clean)
 
 import Internal.Internal exposing (..)
@@ -40,11 +41,11 @@ updateChatBox : ChatLocale -> UpdateElement ChatBoxMsg ChatBox
 updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
   let a = 1
   in case msg of
-       ChatBoxMsg msg_ -> pair model <| cmdMsg msg_
+       MsgChatBoxMsg msg_ -> pair model <| cmdMsg msg_
+       BatchChatBoxMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftChatBoxMsg) msgs
        ChatRoomMsg chatRoomMsg -> updateChatRoom chatLocale model chatRoomMsg
          chatBox.chatRoom (liftChatBoxMsg << ChatRoomMsg)
          <| \newChatRoom -> setChatBox {chatBox | chatRoom = newChatRoom}
-       BatchChatBoxMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftChatBoxMsg) msgs
        WaitHalfASecChatBox message -> pair model <| do <|
          waitHalfASec <| Task.succeed <| liftChatBoxMsg message
        ChatBoxElmBarMsg elmBarMsg -> updateElmBar_ model
@@ -59,6 +60,7 @@ updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
               then NoChatBoxOverlay else chatBoxOverlay}
          ,cmdMsg <| liftChatBoxMsg <| BatchChatBoxMsgs
             [ChatRoomMsg <| SetChatRoomOverlay NoChatRoomOverlay
+            ,ChatRoomMsg <| SetMentionBox Nothing
             ,ChatBoxElmBarMsg ResetScrollStack])
        UpdateChatBoxOverlay chatBoxOverlay -> noCmd <| setChatBox
          {chatBox | chatBoxOverlay = chatBoxOverlay}
@@ -202,6 +204,8 @@ updateChatRoom : ChatLocale -> UpdateElement ChatRoomMsg ChatRoom
 updateChatRoom chatLocale model msg chatRoom liftChatRoomMsg setChatRoom =
   let a = 1
   in case msg of
+       MsgChatRoomMsg msg_ -> pair model <| cmdMsg msg_
+       BatchChatRoomMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftChatRoomMsg) msgs
        MessageRoomMsg elmBarMsg -> updateElmBar updateMessageRoom model
          elmBarMsg chatRoom.messageRoom
          (liftChatRoomMsg << MessageRoomMsg)
@@ -210,28 +214,40 @@ updateChatRoom chatLocale model msg chatRoom liftChatRoomMsg setChatRoom =
        --  chatRoom.messageRoom (liftChatRoomMsg << MessageRoomMsg)
        --  <| \newMessageRoom -> setChatRoom {chatRoom | messageRoom = newMessageRoom}
 
-       SetChatRoomOverlay chatRoomOverlay -> noCmd <| setChatRoom
-         {chatRoom | chatRoomOverlay =
-           if isChatRoomOverlayOn chatRoom chatRoomOverlay
-              then NoChatRoomOverlay else chatRoomOverlay}
+       SetChatRoomOverlay chatRoomOverlay ->
+         (setChatRoom
+           {chatRoom | chatRoomOverlay =
+             if isChatRoomOverlayOn chatRoom chatRoomOverlay
+                then NoChatRoomOverlay else chatRoomOverlay}
+           ,cmdMsg <| liftChatRoomMsg <| SetMentionBox Nothing)
        UpdateChatRoomOverlay chatRoomOverlay -> noCmd <| setChatRoom
          {chatRoom | chatRoomOverlay =
            if isChatRoomOverlayOn chatRoom chatRoomOverlay
               then chatRoomOverlay else chatRoom.chatRoomOverlay}
+       SetChatRoom cRoom -> noCmd <| setChatRoom cRoom
+       SetMentionBox m ->
+         (setChatRoom {chatRoom | mentionBox = m}
+         ,Cmd.none --cmdMsg TriggerAutoScrollDown
+         )
+       AddMention str ->
+         (setChatRoom {chatRoom
+           | input = (String.fromList <| List.reverse <|
+                      ListE.dropWhile (not << CharE.isSpace) <|
+                      String.toList <| String.reverse chatRoom.input)
+                     ++ str
+           , mentionBox = Nothing}
+         ,Cmd.none --cmdMsg TriggerAutoScrollDown
+         )
        UpdateChatRoomInput message ->
-         if String.contains "\n" message
-            then pair (setChatRoom {chatRoom | input = ""}) <|
-                      -- dont worry about extra spaces and newLines
-                      -- cleaning messages is handled on the server side
-                      cmdMsg <| SocketRequest <|
-                        UserMessageRequest chatLocale message
-                      --sendOverSocket <| JE.encode 0 <| JE.object
-                      --  [("request", JE.string "userMessage")
-                      --  ,("message", JE.string message)]
-            else noCmd <| setChatRoom {chatRoom | input = message}
-       SetMentionBox b -> noCmd <| setChatRoom
-         {chatRoom | mentionBox = b
-                   }
+         (setChatRoom {chatRoom
+           | input = if String.contains "\n" message then "" else message
+           , mentionBox = if lastWord message == "" then Nothing else chatRoom.mentionBox
+           }
+         ,cmdIf (String.contains "\n" message) <| cmdMsg <| BatchMsgs <|
+           [SocketRequest <|
+             UserMessageRequest chatLocale message
+           ]
+         )
        AddEmoteChatRoomInput str -> noCmd <| setChatRoom
          {chatRoom | input =
            if String.right 1 chatRoom.input == " " || chatRoom.input == ""
@@ -245,6 +261,7 @@ updateMessageRoom : UpdateElement MessageRoomMsg MessageRoom
 updateMessageRoom model msg messageRoom liftMessageRoomtMsg setMessageRoom =
   let a = 1
   in case msg of
+       MsgMessageRoomMsg msg_ -> pair model <| cmdMsg msg_
        SetHighlightUsersList highlightedUsers -> noCmd <| setMessageRoom <|
          {messageRoom | highlightedUsers = highlightedUsers}
        UpdateHighlightUsersList username -> noCmd <| setMessageRoom <|

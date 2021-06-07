@@ -22,7 +22,6 @@ import Element.Input as In
 import Element.Events as Evt
 import Element.Lazy as La
 
-import Accessors exposing (..)
 import List.Extra
 
 import Chat.ChatBox exposing (..)
@@ -207,9 +206,8 @@ mainBox model homePageInfo =
       wrapperM = wrapper False Nothing      (List.length homePageInfo.history > 0) -- current (Middle)
       wrapperR = wrapper True  (Just True)  True                                 -- unappendHistory (Right)
       mkSubPage wrap subPage = case subPage of
-        Just (HomeSubPageMain) ->            wrap <| (\model homePageInfo _ ->
-                                                     streamerInfo.homeSubPageMain model homePageInfo)
-        Just (HomeSubPageMutualAid info) ->  wrap <| streamerInfo.mutualAidMainBoxPage  info
+        Just (MainMainBoxPage) ->            wrap <| (\model_ homePageInfo_ _ ->
+                                                     mainMainBoxPage model_ homePageInfo_)
         Just (HomeSubPageSupport info) ->    wrap <| supportMainBoxPage    info
         Just (HomeSubPageDonate info) ->     wrap <| donateMainBoxPage     info
         Just (HomeSubPageSubscribe info) ->  wrap <| subscribeMainBoxPage  info
@@ -258,7 +256,7 @@ logo model homePageInfo =
            then []
            else [HtmlA.style "cursor" "pointer"
                 ,HtmlE.onClick <| HomePageMsg <|
-                   if homePageInfo.streamScreenSize || isSubPageOn homePageInfo.subPage initialHomeSubPageMainInfo
+                   if homePageInfo.streamScreenSize || isSubPageOn homePageInfo.subPage initialMainMainBoxPageInfo
                       then SetStreamScreenSize <| not logoShrink
                       else SetSubPageDefault True
                 ])
@@ -484,7 +482,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
                 [ex [centerX, Ft.color <| colorPalette.txSoft] "+ Fancy Badge"
                 ,let allSubBadges = model.commonInfo.staticInfo.subBadges
                      defaultBadge = case Maybe.andThen List.head <| Array.get 0 allSubBadges of
-                       Just badge -> mkEmote 32 badge.emote
+                       Just badge -> mkEmote 24 badge.emote
                        _ -> Element.none
                  in case Maybe.map .role model.commonInfo.profile of
                       Just (ProfileChatterRole chatterRole) -> case Array.get (subPageInfo.tier - 1) allSubBadges of
@@ -492,7 +490,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
                           let subBadge = List.head <| Tuple.first <|
                                 List.partition ((<=) chatterRole.months << .monthsRequired) badgeList
                           in case subBadge of
-                               Just badge -> mkEmote 32 badge.emote
+                               Just badge -> mkEmote 24 badge.emote
                                _ -> defaultBadge
                         _ -> defaultBadge
                       _ -> defaultBadge
@@ -555,7 +553,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
                              _ -> subPageInfo --,Evt.onClick SearchUserForGiftSubscription TODO
                      ,text = String.fromInt subPageInfo.numberOfRandomGiftSubs
                      ,placeholder = placeholder (Ft.color colorPalette.txSoft2) ""
-                     ,label = In.labelHidden "Subscription Gift User Search Input"}
+                     ,label = In.labelHidden "Random Subscription Gift Input"}
             ,em []  -- this extra el is here because the up arrow and auto renew color transitions are conflicting
             ,co [Ft.size 18, Ft.color colorPalette.txSoft]
              <| let arrowButton num = faIcon <|
@@ -842,51 +840,6 @@ agreementMainBoxPage model homePageInfo back =
 
 
 
-mainBoxPageWrapper model panel =
-  let colorPalette = currentColorPalette model
-  in el [width fill, height fill, centerX
-        ,paddingEach {bottom = 0, top = 24, left = 24, right = 24}
-        ,clipX, scrollbars, noSelection]
-  <| el [width fill, height fill, htmlClass "hide-scroll", scrollbars]
-        panel
-
-mainBoxPageTitle model bool =
-  let colorPalette = currentColorPalette model
-  in el [width fill, height <| px 50
-        ,Ft.size 32, Ft.bold, Ft.color colorPalette.txSoft
-        ,inFront <| elIf bool -- true == show back button, false == hide
-           <| el ([paddingEach {left = 10, right = 12, top = 8, bottom = 8}
-                  ,Ft.size 40
-                  ,Bdr.rounded 16
-                  ,pointer, mouseOver [Bg.color colorPalette.bgMain2]
-                  ,Evt.onClick <| HomePageMsg UnappendSubPage
-                  ]
-                  ++ colorTransitionStyle)
-           <| faIcon [centerX,centerY]
-                     "fas fa-chevron-left"
-        ]
-  << ex [centerX, centerY]
-
-
--- header and text information
-informationSection : Model -> String -> List (Element Msg) -> Element Msg
-informationSection model title els = co
-  [width fill, centerX, spacing 24]
-  [sectionTitle model title
-  ,co [width fill, centerX, spacing 16, paddingXY 20 0, Ft.center, Ft.size 16]
-      els]
-
--- title with lines on the sides
-sectionTitle : Model -> String -> Element Msg
-sectionTitle model str =
-  let colorPalette = currentColorPalette model
-  in ro [width fill, spacing 16]
-        [el [width fill] <|
-         dividerH model
-        ,ex [Ft.size 20, Ft.bold, Ft.color colorPalette.txSoft]
-            str
-        ,el [width fill] <|
-         dividerH model]
 
 subTierImage model tier = image [width <| px 180, height <| px 180, centerX] <|
   case Array.get (tier - 1) streamerInfo.subscriptionTiersLogos of

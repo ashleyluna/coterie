@@ -395,7 +395,7 @@ type alias HomePageInfo = -- Nothing = Stream is the focus
   ,chatBox : ChatBox
   }
 
-type HomeSubPage = HomeSubPageMain
+type HomeSubPage = MainMainBoxPage
                  | HomeSubPageSupport SupportRecord
                  | HomeSubPageDonate DonateRecord
                  | HomeSubPageSubscribe SubscribeRecord
@@ -511,7 +511,8 @@ type alias RegisterRecord =
 type alias ChatRoom =
   {messageRoom : ElmBar MessageRoom
   ,chatRoomOverlay : ChatRoomOverlay
-  ,mentionBox : Bool
+  ,mentionBox : Maybe Int
+  ,inputFocused : Bool
   ,input : String}
 
 type ChatRoomOverlay = NoChatRoomOverlay

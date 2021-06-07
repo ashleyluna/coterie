@@ -155,9 +155,9 @@ type StreamerPageMsg = StreamerPageChatBoxMsg ChatBoxMsg
 --------------------------------------------------------------------------------
 -- ChatBox Segments
 
-type ChatBoxMsg = ChatBoxMsg Msg
+type ChatBoxMsg = MsgChatBoxMsg Msg
                 | BatchChatBoxMsgs (List ChatBoxMsg)
-                | WaitHalfASecChatBox (ChatBoxMsg)
+                | WaitHalfASecChatBox ChatBoxMsg
 
                 | SetChatBoxOverlay ChatBoxOverlay
                 | UpdateChatBoxOverlay ChatBoxOverlay
@@ -189,14 +189,19 @@ type ChatBoxMsg = ChatBoxMsg Msg
                | ChatBoxElmBarMsg (ElmBarMsg ChatBoxMsg)
                | ChatBoxTriggerAutoScrollDown String
 
-type ChatRoomMsg = MessageRoomMsg (ElmBarMsg MessageRoomMsg)
+type ChatRoomMsg = MsgChatRoomMsg Msg
+                 | BatchChatRoomMsgs (List ChatRoomMsg)
+                 | MessageRoomMsg (ElmBarMsg MessageRoomMsg)
                  | SetChatRoomOverlay ChatRoomOverlay
                  | UpdateChatRoomOverlay ChatRoomOverlay
+                 | SetChatRoom ChatRoom
+                 | SetMentionBox (Maybe Int)
+                 | AddMention String
                  | UpdateChatRoomInput String
-                 | SetMentionBox Bool
                  | AddEmoteChatRoomInput String
 
-type MessageRoomMsg = SetHighlightUsersList (List String)
+type MessageRoomMsg = MsgMessageRoomMsg Msg
+                    | SetHighlightUsersList (List String)
                     | UpdateHighlightUsersList String
                     | SetHoverUsername Bool
                    -- auto scroll stuff

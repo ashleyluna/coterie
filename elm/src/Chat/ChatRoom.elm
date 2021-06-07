@@ -15,13 +15,15 @@ import Element.Font as Ft
 import Element.Input as In
 import Element.Events as Evt
 
-import Accessors exposing (..)
+import Keyboard as Keyb exposing (..)
+import Keyboard.Events as KeyEvt exposing (..)
 
 import Chat.MessageRoom exposing (..)
 import Internal.Internal exposing (..)
 import Internal.Style exposing (..)
 import Main.Model exposing (..)
 import Main.Msg exposing (..)
+import Streamer exposing (..)
 import Update.LiveInfo exposing (..)
 import Update.CommonInfo exposing (..)
 import Update.Chat exposing (..)
@@ -36,6 +38,17 @@ import Update.Chat exposing (..)
 chatRoom : Model -> String -> Chat -> ChatRoom -> Element ChatRoomMsg
 chatRoom model containerName chat cRoom =
   let colorPalette = currentColorPalette model
+      mentionChars = lastWord cRoom.input
+      filterUsers = Dict.filter <| \name _ ->
+        mentionChars == "" || String.contains (String.toLower mentionChars) (String.toLower name)
+      simpleDict f = Dict.toList << Dict.map (\_ -> f)
+      specialUsers : List (String, NameColor)
+      specialUsers = List.concatMap (\(_,ls) -> ls) <|
+        List.filter (\(_, ls) -> ls /= []) <|
+        List.concatMap (simpleDict <| simpleDict .nameColor << filterUsers) chat.users.specialUsers
+      chatters : List (String, NameColor)
+      chatters = simpleDict .nameColor <| filterUsers chat.users.chatters
+      userList = List.take 4 <| specialUsers ++ chatters
   in co [width fill, height fill, scrollbars]
         [el ([width fill, height fill, scrollbars]
              ++
@@ -45,39 +58,56 @@ chatRoom model containerName chat cRoom =
             ) <| messageRoom model False MessageRoomMsg (containerName ++ "chatroom-") chat cRoom.messageRoom
         -- chat input
         ,ro ([width fill, alignBottom, centerX, paddingXY 12 6, spacing 8
-            ,Ft.color colorPalette.txSoft, Ft.size 14
-            ,Bg.color colorPalette.bgMain]
-            ++ if not cRoom.mentionBox then []
-                  else List.singleton <| above <|
-                    el [height <| px 120, padding 4, Bg.color <| rgb 0 0 0, clip] <|
-                    let mentionChars = String.fromList <| List.reverse <|
-                                       ListE.takeWhile Char.isAlphaNum <|
-                                       String.toList <| String.reverse cRoom.input
-                        filterUsers = Dict.filter <| \name _ ->
-                          mentionChars == "" || String.contains (String.toLower mentionChars) (String.toLower name)
-                        simpleDict f = Dict.toList << Dict.map (\_ -> f)
-                        specialUsers : List (String, NameColor)
-                        specialUsers = List.concatMap (\(_,ls) -> ls) <|
-                          List.filter (\(_, ls) -> ls /= []) <|
-                          List.concatMap (simpleDict <| simpleDict .nameColor << filterUsers) chat.users.specialUsers
-                        chatters : List (String, NameColor)
-                        chatters = List.take 10 <| simpleDict .nameColor <| filterUsers chat.users.chatters
-                    in
-                    co [] <|
-                       flip List.map (specialUsers ++ chatters) <| \(username,nameColor) ->
-                         el [width fill, centerX, padding 8] <|
-                            chromaUsername model.commonInfo.settings.themeMode
-                                           username nameColor
-
-            )
+             ,Ft.color colorPalette.txSoft, Ft.size model.commonInfo.settings.textSize
+             ,Bg.color colorPalette.bgMain]
+            ++ listIf (cRoom.mentionBox /= Nothing) -- mention box
+               [above <|
+                  el [width fill, paddingRight 16, clip] <|
+                  co [width fill, alignBottom, padding 4
+                     ,Bg.color colorPalette.bgMain] <|
+                  if userList == []
+                     then [ex [padding 4] "No Users Found"]
+                     else flip List.indexedMap userList <| \int (username,nameColor) ->
+                       -- TODO mentionBox is infront of auto scroll button
+                       el [width fill, centerX, padding 4
+                          ,Bg.color <| if Just int == cRoom.mentionBox
+                            then colorPalette.bgMain2
+                            else colorPalette.bgMain
+                          ,Evt.onClick <| AddMention username] <|
+                          chromaUsername model.commonInfo.settings.themeMode
+                                         username nameColor])
             [In.multiline [width fill, height (maximum 95 shrink)
                           ,Ft.color colorPalette.txMain
                           ,Bdr.width 2, Bdr.rounded 8, Bdr.color colorPalette.bgMain3
                           ,Bg.color colorPalette.bgMain
                           ,focused [Bdr.color colorPalette.mainHighlight]
                           --,In.focusedOnLoad
-                          --,Element.htmlAttribute <| KeyEvt.on KeyEvt.Keyup <| List.singleton <| pair Keyb.Tab <|
-                          --  SetMentionBox <| not cRoom.mentionBox
+                          ,Element.htmlAttribute <| KeyEvt.customPerKey KeyEvt.Keydown <|
+                            let arrowEvent arrow direction = pair arrow <| -- direction: True == Up, False == Down
+                                  {message = case cRoom.mentionBox of
+                                    Nothing -> MsgChatRoomMsg NoMsg
+                                    Just position -> SetMentionBox <| Just <|
+                                      if direction
+                                         then max (position - 1) 0
+                                         else min (position + 1) <| max (List.length userList - 1) 0
+                                  ,preventDefault = cRoom.mentionBox /= Nothing, stopPropagation = False}
+                            in [pair Keyb.Tab <|
+                                 {message = case cRoom.mentionBox of
+                                   Nothing -> case mentionChars of
+                                     "" -> MsgChatRoomMsg NoMsg
+                                     _ -> SetMentionBox <| Just 0
+                                   Just position -> BatchChatRoomMsgs
+                                     [SetMentionBox Nothing
+                                     ,case ListE.getAt position userList of
+                                       Nothing -> MsgChatRoomMsg NoMsg
+                                       Just (str,_) -> AddMention str
+                                     ]
+                                 ,preventDefault = True, stopPropagation = False}
+                               ,arrowEvent Keyb.ArrowUp True
+                               ,arrowEvent Keyb.ArrowDown False
+                               ]
+                          ,Evt.onFocus <| SetChatRoom <| {cRoom | inputFocused = True}
+                          ,Evt.onLoseFocus <| SetChatRoom <| {cRoom | inputFocused = False}
                           ]
                           {onChange = UpdateChatRoomInput
                           ,text = cRoom.input

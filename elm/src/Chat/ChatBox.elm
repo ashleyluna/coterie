@@ -24,8 +24,6 @@ import Element.Input as In
 import Element.Events as Evt
 import Element.Lazy as La
 
-import Accessors exposing (..)
-
 import Chat.ChatRoom exposing (..)
 import Chat.MessageRoom exposing (..)
 import Internal.Internal exposing (..)
@@ -252,7 +250,7 @@ settingsOverlay chatBoxName info profile model cBox =
                  --,
                  ]
              ,el [centerX, Ft.color colorPalette.txSoft
-                 ,Evt.onClick <| ChatBoxMsg GETLogOut] <|
+                 ,Evt.onClick <| MsgChatBoxMsg GETLogOut] <|
               bubbleMain model
                  "Log Out"
              ]
@@ -585,7 +583,7 @@ registerOverlay info model cBox =
                mkLink_ [if not info.signUp || info.invalidUsername == 1
                            then pointer
                            else defaultCursor] <|
-                       "https://id.twitch.tv/oauth2/authorize?client_id=6mgg169rdswvxgdoyvnojqdllx9hu3&redirect_uri=" ++ apiUrl model.commonInfo.localInfo.url ++ "register/twitch&response_type=code&scope=user:read:email%20user:read:subscriptions"
+                       "https://id.twitch.tv/oauth2/authorize?client_id=" ++ streamerInfo.secrets.twitchClientId ++ "&redirect_uri=" ++ apiUrl model.commonInfo.localInfo.url ++ "register/twitch&response_type=code&scope=user:read:email%20user:read:subscriptions"
             ,socialButton 7 7 8 6 "fab fa-google" <|
                el [centerX, Evt.onClick StartGoogleSignIn]
             ]
@@ -604,38 +602,38 @@ registerOverlay info model cBox =
            ,buttonSlider model info.remember <|
                updateRegister {info | remember = not info.remember}
            ]
-        ,el [centerX, paddingBottom 40
-            ,Ft.color colorPalette.txSoft, Ft.size 14
-            ,Evt.onClick <| updateRegister {info | signUp = not info.signUp}
-            ] <|
-         bubbleMain model <| if info.signUp then "Log In Instead" else "Sign Up Instead"
+       ,el [centerX, paddingBottom 40
+           ,Ft.color colorPalette.txSoft, Ft.size 14
+           ,Evt.onClick <| updateRegister {info | signUp = not info.signUp}
+           ] <|
+           bubbleMain model <| if info.signUp then "Log In Instead" else "Sign Up Instead"
        ,el [width <| maximum 420 fill, height <| px 144, centerX, clip
            ,paddingTop 20] <|
-        co [width fill, height <| px 100, spacing 20
-           ,htmlStyle "bottom" <| if info.signUp then "0px" else "124px"
-           ,htmlStyle "transition" "bottom 1s ease-in-out"
-           ,htmlStyle "-webkit-transition" "bottom 1s ease-in-out" ] <|
-           [el [width fill, centerX, Ft.size 20] <|
-               fieldCheckChatBox model In.username
-                 info.invalidUsername
-                 (\str -> updateRegister {info | username = str})
-                 (\str -> SignUpCheck str)
-                 info.username
-                 "Username"
-                 "usernameInput"
-           ,elIf (info.invalidUsername >= 2) <|
-                 fieldErrorText model <| case info.invalidUsername of
-                   2 -> "Character length must be 3-24. Characters must be A-Z or 0-9" --TODO allow underscores
-                   3 -> "Usernames must not include profanity"
-                   _ -> "This username is already in use"
-           ]
+           co [width fill, height <| px 100, spacing 20
+              ,htmlStyle "bottom" <| if info.signUp then "0px" else "124px"
+              ,htmlStyle "transition" "bottom 1s ease-in-out"
+              ,htmlStyle "-webkit-transition" "bottom 1s ease-in-out" ] <|
+              [el [width fill, centerX, Ft.size 20] <|
+                  fieldCheckChatBox model In.username
+                    info.invalidUsername
+                    (\str -> updateRegister {info | username = str})
+                    (\str -> SignUpCheck str)
+                    info.username
+                    "Username"
+                    "usernameInput"
+              ,elIf (info.invalidUsername >= 2) <|
+                    fieldErrorText model <| case info.invalidUsername of
+                      2 -> "Character length must be 3-24. Characters must be A-Z or 0-9" --TODO allow underscores
+                      3 -> "Usernames must not include profanity"
+                      _ -> "This username is already in use"
+              ]
        ,co [centerX, spacing 8, alignBottom, paddingBottom 8, Ft.size 16]
            [ex [centerX, Ft.color colorPalette.txSoft]
                "By continuing you are confirming you have read the "
            ,ex [centerX, Ft.color colorPalette.highlightBlue
                ,mouseOver [Ft.color colorPalette.highlightBlueBright]
                ,pointer
-               ,Evt.onClick <| ChatBoxMsg <| HomePageMsg <| AppendSubPage HomeSubPageAgreement]
+               ,Evt.onClick <| MsgChatBoxMsg <| HomePageMsg <| AppendSubPage HomeSubPageAgreement]
                "user agreement"]
        ]
 

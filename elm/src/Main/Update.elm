@@ -9,8 +9,6 @@ import String.Extra as StringE
 import Task
 import Time
 
-import Accessors exposing (..)
-
 import Internal.Internal exposing (..)
 import Main.Model exposing (..)
 import Main.Msg exposing (..)
@@ -52,9 +50,7 @@ update msg model = List.foldr
 
 generalMsgs : Update
 generalMsgs model msg next =
-  let setUpLens = makeOneToOne .setUp <|
-            \change record -> {record | setUp = change record.setUp}
-      overSetUp f = over setUpLens f model
+  let overSetUp f = {model | setUp = f model.setUp}
   in case msg of
        BatchMsgs msgs -> pair model <| Cmd.batch <| List.map cmdMsg msgs
        MsgCmd cmd -> (model, cmd)

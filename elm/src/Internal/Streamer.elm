@@ -24,8 +24,9 @@ type alias Streamer =
   ,seasonDates : List String
   ,currentSeason : Int
   ,colors : Colors
-
-  ,homeSubPageMain : Model ->  Element Msg
+  ,secrets :
+    {twitchClientId : String
+    }
   }
 
 

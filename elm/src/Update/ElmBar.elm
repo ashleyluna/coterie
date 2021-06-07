@@ -7,7 +7,6 @@ import Json.Encode as JE
 import Task
 import Time exposing (Posix, Zone)
 
-import Accessors exposing (..)
 import String.Extra exposing (clean)
 
 import Internal.Internal exposing (..)

@@ -29,33 +29,10 @@ infixr 8 ¢
 
 
 --------------------------------------------------------------------------------
--- Join + Sequence
+-- Join + SequenceA
 
 -- (>>=) m f = join $ fmap f m
 -- traverse f m = sequenceA $ fmap f m
-
-
-
-
--- ($>>=) m f = sequenceA $ fmap (join . fmap f) m :: t (m a) -> (a -> m b) -> m (t b)
--- (>$>=) m f = join $ fmap (sequenceA . fmap f) m :: m (t a) -> (a -> m b) -> m (t b)
-
--- ______ m f = join $ fmap (sequenceA . f) m      :: m a -> (a -> t (m b)) -> m (t b)
--- (>>=)  m f = join $ fmap f m                    :: m a -> (a -> m (t b)) -> m (t b)
-              -- ^ literally just bind
-
--- (>>==) m f = m >>= \t -> t >>*= f               :: m (t a) -> (a -> m (t b)) -> m (t b)
-
-
-
-
--- ______ m f = fmap (join . sequenceA . fmap f) m :: t (m a1) -> (a1 -> m a2) -> t (m a2)
--- ______ m f = fmap (join . fmap f) $ sequenceA m :: m (t a1) -> (a1 -> m a2) -> t (m a2)
-
--- (>>*=) m f = fmap join $ sequenseA $ fmap f m   :: m a -> (a -> t (m b)) -> t (m b)
--- ______ m f = sequenceA $ join $ fmap f m        :: m a -> (a -> m (t b)) -> t (m b)
-
--- :: m (t a) -> (a -> m (t b)) -> t (m b)
 
 
 
@@ -66,15 +43,81 @@ infixl 2 =<<$
 ($>>=) m f = traverse (>>= f) m
 (=<<$) f m = m $>>= f
 
-infixl 2 =<$<
 infixl 2 >$>=
+infixl 2 =<$<
 (>$>=) :: (Monad m, Traversable t) => m (t a) -> (a -> m b) -> m (t b)
 (>$>=) m f = m >>= traverse f
 (=<$<) f m = m >$>= f
 
+infixl 2 >>$=
+infixl 2 =$<<
+(>>$=) :: (Monad m, Traversable t) => m a -> (a -> t (m b)) -> m (t b)
+(>>$=) m f = m >>= sequenceA . f
+(=$<<) f m = m >>$= f
+
+{-
+(>>=$) :: (Monad m, Traversable t) => m a -> (a -> m (t b)) -> m (t b)
+this is the same as (>>=)
+-}
 
 
+
+
+
+
+
+
+infix 2 *>>=
+infix 2 =<<*
+(*>>=) :: (Functor f, Monad t, Traversable t) => f (t a) -> (a -> t b) -> f (t b)
+(*>>=) m f = fmap (join . traverse f) m
+(=<<*) f m = m *>>= f
+
+infix 2 >*>=
+infix 2 =<*<
+(>*>=) :: (Applicative f, Monad t, Traversable t) => t (f a) -> (a -> t b) -> f (t b)
+(>*>=) m f = fmap (>>= f) $ sequenceA m
+(=<*<) f m = m >*>= f
 
 infix 2 >>*=
-(>>*=) :: (Monad t, Traversable t, Applicative f) => t a -> (a -> f (t b)) -> f (t b)
+infix 2 =*<<
+(>>*=) :: (Applicative f, Monad t, Traversable t) => t a -> (a -> f (t b)) -> f (t b)
 (>>*=) m f = fmap join $ traverse f m
+(=*<<) f m = m >>*= f
+
+infix 2 >>=*
+infix 2 *=<<
+(>>=*) :: (Applicative f, Monad t, Traversable t) => t a -> (a -> t (f b)) -> f (t b)
+(>>=*) m f = sequenceA $ m >>= f
+(*=<<) f m = m >>=* f
+
+
+
+
+
+
+
+
+infixl 2 >>==
+infixl 2 ==<<
+(>>==) :: (Monad m, Monad t, Traversable t) => m (t a) -> (a -> m (t b)) -> m (t b)
+(>>==) m f = m >>= \t -> t >>*= f
+(==<<) f m = m >>== f
+
+--infixl 2
+--infixl 2
+--() :: (Monad m, Monad t, Traversable t) => t (m a) -> (a -> m (t b)) -> m (t b)
+--() t f = t >>*= \m -> m >>= f
+--() f m = m _ f
+
+--infixl 2
+--infixl 2
+--() :: (Monad m, Monad t, Traversable t) => m (t a) -> (a -> t (m b)) -> m (t b)
+--() m f = m >>= \t -> t >>=* f
+--() f m = m _ f
+
+--infixl 2
+--infixl 2
+--() :: (Monad t1, Monad t2, Traversable t1, Traversable t2) => t1 (t2 a) -> (a -> t1 (t2 b)) -> t2 (t1 b)
+--() m f = m >>=* \t -> t >>*= f
+--() f m = m _ f

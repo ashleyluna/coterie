@@ -5,13 +5,14 @@
 
 module Internal.Api where
 
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.HashSet as HashSet
 import qualified Database.Esqueleto.Experimental as E
 import Database.Persist.Sql as P
 
 import Import
 import qualified Model as DB
 
-import Internal.LiveInfo
 import Internal.User
 
 getUser :: Text -> Handler (Maybe (Entity DB.User))
@@ -79,10 +80,12 @@ fromUserDB userEntity@(Entity userKey user@(DB.User {..})) = do
                             maybeRight
                           $ fromMaybe LRGB $ readMay userColorMode
   creatorInfo <- HashMap.lookup userId <$> readTVarIO tvCreators
+  moderation <- UserModeration <$> return 0
+                               <*> return 0
   return $ User userId
                 accountInfo
                 creatorInfo
-                -- moderation
+                moderation
                 userUsername
                 userPronouns
                 role

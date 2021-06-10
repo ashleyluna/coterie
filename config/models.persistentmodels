@@ -3,11 +3,11 @@
 
 User
   -- Account
-  creationTime          Word
+  creationTime          Int
   email                 Text
-  lastNameChangeTime    Word
-  numMonthsSubbed       Word
-  season                Word
+  lastNameChangeTime    Int
+  numMonthsSubbed       Int
+  season                Int
   -- Connections
   -- Twitch
   twitchAccessToken     Text Maybe
@@ -15,17 +15,17 @@ User
   twitchId              Text Maybe
   twitchLogin           Text Maybe
   twitchEmail           Text Maybe
-  twitchCreated         Word Maybe
-  twitchFollowTime      Word Maybe
-  twitchIsSubscriber    Word Maybe
+  twitchCreated         Int  Maybe
+  twitchFollowTime      Int  Maybe
+  twitchIsSubscriber    Int  Maybe
   -- Google
   googleId              Text Maybe
 
   -- Profile
   username              Text
   role                  RoleId Maybe
-  pronouns              Text Maybe
-  points                Word
+  pronouns              Text   Maybe
+  points                Int
   -- Badges
   firstBadge            Text Maybe
   secondBadge           Text Maybe
@@ -33,16 +33,16 @@ User
   -- Name Color
   defaultColor          Text Maybe -- null = RandomNameColor
   colorMode             Text -- RGB, LRGB, HSI, etc
-  colorLeftH            Word Maybe -- Hue
-  colorLeftCL           Word Maybe -- Chroma Light Mode
-  colorLeftCD           Word Maybe -- Chroma Dark Mode
-  colorLeftVL           Word Maybe -- value Light Mode
-  colorLeftVD           Word Maybe -- value Dark Mode
-  colorRightH           Word Maybe
-  colorRightCL          Word Maybe
-  colorRightCD          Word Maybe
-  colorRightVL          Word Maybe
-  colorRightVD          Word Maybe
+  colorLeftH            Int  Maybe -- Hue
+  colorLeftCL           Int  Maybe -- Chroma Light Mode
+  colorLeftCD           Int  Maybe -- Chroma Dark Mode
+  colorLeftVL           Int  Maybe -- value Light Mode
+  colorLeftVD           Int  Maybe -- value Dark Mode
+  colorRightH           Int  Maybe
+  colorRightCL          Int  Maybe
+  colorRightCD          Int  Maybe
+  colorRightVL          Int  Maybe
+  colorRightVD          Int  Maybe
 
   UniqueEmail email
   UniqueUsername username
@@ -55,7 +55,7 @@ User
 
 Role
   name  Text
-  power Word
+  power Int
 
   deriving Show
 
@@ -64,8 +64,8 @@ Role
 
 UserMessage
   sender    UserId
-  chat      Word -- 1 == Main Chat, 2 == Mod Chat
-  timestamp Word
+  chat      Int -- 1 == Main Chat, 2 == Mod Chat
+  timestamp Int
   message   Text
 
 
@@ -74,7 +74,7 @@ UserMessage
 DirectMessage
   sender            UserId
   receiver          UserId
-  timestamp         Word
+  timestamp         Int
   message           Text
   --read              Bool
   deletedBySender   Bool
@@ -134,7 +134,7 @@ Sub
   paymentId       PaymentId
   userId          UserId -- receiver
   gifter          UserId Maybe -- maybe purchaser
-  tier            Word
+  tier            Int
   is3MonthPackage Bool
   message         Text
   source          Text
@@ -149,7 +149,7 @@ ActiveSub
   userId       UserId
   subscription SubId -- Associated Subscription
   recurring    Bool
-  endTime      Word
+  endTime      Int
 
   UniqueSubber userId
   UniqueSubscription subscription

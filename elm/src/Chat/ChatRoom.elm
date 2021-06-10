@@ -35,8 +35,8 @@ import Update.Chat exposing (..)
 
 
 
-chatRoom : Model -> String -> Chat -> ChatRoom -> Element ChatRoomMsg
-chatRoom model containerName chat cRoom =
+chatRoom : Model -> ChatLocale -> String -> Chat -> ChatRoom -> Element ChatRoomMsg
+chatRoom model chatLocale containerName chat cRoom =
   let colorPalette = currentColorPalette model
       mentionChars = lastWord cRoom.input
       filterUsers = Dict.filter <| \name _ ->
@@ -103,13 +103,25 @@ chatRoom model containerName chat cRoom =
                                        Just (str,_) -> AddMention str
                                      ]
                                  ,preventDefault = True, stopPropagation = False}
+                               ,pair Keyb.Enter <|
+                                 {message = if String.length cRoom.input >= 1 && String.length cRoom.input <= 500
+                                   then BatchChatRoomMsgs
+                                     [OverChatRoom <| \cRoom_ ->
+                                       {cRoom_ | input = "", mentionBox = Nothing}
+                                     ,UserChatRoomMsgNow <| SendUserMessage chatLocale cRoom.input << Time.posixToMillis
+                                     ]
+                                   else MsgChatRoomMsg NoMsg -- TODO tell user to not send messages 500+ characters long
+                                 ,preventDefault = True, stopPropagation = False}
                                ,arrowEvent Keyb.ArrowUp True
                                ,arrowEvent Keyb.ArrowDown False
                                ]
-                          ,Evt.onFocus <| SetChatRoom <| {cRoom | inputFocused = True}
-                          ,Evt.onLoseFocus <| SetChatRoom <| {cRoom | inputFocused = False}
                           ]
-                          {onChange = UpdateChatRoomInput
+                          {onChange = \str -> if String.length str <= 500
+                            then OverChatRoom <| \cRoom_ ->
+                                   {cRoom_ | input = str
+                                           , mentionBox = if lastWord str == ""
+                                               then Nothing else cRoom_.mentionBox}
+                            else MsgChatRoomMsg NoMsg
                           ,text = cRoom.input
                           ,placeholder = Just <| In.placeholder [] <| tx "Send a message"
                           ,label = In.labelHidden "Chat Input"
@@ -130,12 +142,9 @@ emoteOverlay model cRoom =
       mkEmoteButton gray emote = el
         [Evt.onClick <| AddEmoteChatRoomInput emote.name
         ,if gray then htmlStyle "filter" "grayscale(100%)" else pointer] <|
-        mkEmote 32 emote
-  in --mainBoxOverlayWrapper model <|
-       co [width fill, height fill, paddingXY 0 16, spacing 40
-          ,Ft.size 16, Ft.bold, noSelection]
-          [overlayHeaderLeft model "Emotes"
-          ,wrappedRow [centerX, spacing 20] <| List.map (mkEmoteButton False) <|
+        mkEmote 24 emote
+  in chatRoomOverlayWrapper model "Emotes" <|
+          [wr [centerX, paddingTop 40 , spacing 20] <| List.map (mkEmoteButton False) <|
                       Dict.values model.commonInfo.staticInfo.globalEmoteList
           ,ex [centerX, paddingEach {top = 50, right = 0, bottom = 0, left = 0}
               ,Ft.size 20, Ft.color colorPalette.txMain2]

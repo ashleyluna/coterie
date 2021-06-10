@@ -49,7 +49,7 @@ homePage model homePageInfo =
            [mainBox model homePageInfo
            ,el [width <| px 500, height fill] <|
                Element.map (HomePageMsg << HomeChatBoxMsg) <|
-               chatBox model "homepage-" mainChat homePageInfo.chatBox]]
+               chatBox model MainChat "homepage-" mainChat homePageInfo.chatBox]]
 
 
 
@@ -482,7 +482,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
                 [ex [centerX, Ft.color <| colorPalette.txSoft] "+ Fancy Badge"
                 ,let allSubBadges = model.commonInfo.staticInfo.subBadges
                      defaultBadge = case Maybe.andThen List.head <| Array.get 0 allSubBadges of
-                       Just badge -> mkEmote 24 badge.emote
+                       Just badge -> mkEmote 18 badge.emote
                        _ -> Element.none
                  in case Maybe.map .role model.commonInfo.profile of
                       Just (ProfileChatterRole chatterRole) -> case Array.get (subPageInfo.tier - 1) allSubBadges of
@@ -490,7 +490,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
                           let subBadge = List.head <| Tuple.first <|
                                 List.partition ((<=) chatterRole.months << .monthsRequired) badgeList
                           in case subBadge of
-                               Just badge -> mkEmote 24 badge.emote
+                               Just badge -> mkEmote 18 badge.emote
                                _ -> defaultBadge
                         _ -> defaultBadge
                       _ -> defaultBadge
@@ -499,7 +499,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
             ]
            ,[ro [centerX, spacing 4, Ft.color <| colorPalette.txSoft]
                 [tx "+ Use Subscriber Only Emotes In Chat"
-                ,mkEmote 32 streamerInfo.displayEmote]
+                ,mkEmote 18 streamerInfo.displayEmote]
             ,tieredBenefit 3 "+ Add A Gradient To Your Username"
             --,ro [centerX]
             --    [ex [Ft.color colorPalette.txSoft] "+ Color"
@@ -530,7 +530,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
           Neutral -> co
             [centerX, spacing 20, Ft.size 16] <|
             [el [width shrink, centerX] <|
-             fieldCheckMain model In.text
+             fieldCheckMain model In.username
                subPageInfo.inValidGiftFriendSearch
                (setSubscribe << \str -> {subPageInfo | giftFriendSearch = str})
                (\str -> HomePageMsg <| GiftFriendCheck str)
@@ -665,7 +665,7 @@ subscribe2MainBoxPage subPageInfo model homePageInfo back =
                          {onChange = setSubscribe << (\str ->
                             if String.length str <= 250
                                then {subPageInfo | message = str}
-                               else {subPageInfo | message = String.left 250 str})
+                               else {subPageInfo | message = subPageInfo.message})
                          ,text = subPageInfo.message
                          ,placeholder = Just <| In.placeholder [] <| tx "Subscription Message, Max 250 Characters"
                          ,label = In.labelHidden "Subscription Gift User Search Input"

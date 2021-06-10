@@ -13,13 +13,13 @@ data User = User
   {_userId             :: Int64
   ,_accountInfo        :: AccountInfo
   ,_creatorInfo        :: Maybe Creator
-  --,moderation          :: UserModeration ban and mute
+  ,_moderation         :: UserModeration
   ,_username           :: Text
   ,_pronouns           :: Maybe Text
   ,_role               :: Role
   ,_badges             :: BadgeCollection
   ,_nameColor          :: NameColor
-  --,_points             :: Word
+  --,_points             :: Int
   } deriving Show
 
 --fromUserDB :: UserDB -> User
@@ -28,15 +28,26 @@ data User = User
 -- Account Info
 
 data AccountInfo = AccountInfo
-  {_userCreationTime   :: Word
+  {_userCreationTime   :: Int
   ,_userEmail          :: Text
-  ,_lastNameChangeTime :: Word
-  ,_numMonthsSubbed    :: Word
-  ,_season             :: Word
+  ,_lastNameChangeTime :: Int
+  ,_numMonthsSubbed    :: Int
+  ,_season             :: Int
   -- 3rd party connections
   ,_twitchConn         :: Bool
   ,_googleConn         :: Bool
   } deriving Show
+
+
+
+-- User Moderation
+
+data UserModeration = UserModeration
+  {_numMessages :: Int -- number of messages (not only emotes) sent during stream
+  ,_numModActions :: Int
+  } deriving Show
+
+isSafeUser moderation = _numMessages moderation >= 1000
 
 --------------------------------------------------------------------------------
 -- Roles
@@ -44,13 +55,13 @@ data AccountInfo = AccountInfo
 type Role = Either Chatter SpecialRole
 
 data Chatter = Chatter
-  {_months :: Word
+  {_months :: Int
   ,_subscription :: Maybe Subscription
   } deriving Show
 
 data SpecialRole = SpecialRole
   {_roleName :: Text
-  ,_power :: Word -- streamer, mods, vips
+  ,_power :: Int -- streamer, mods, vips
   } deriving Show
 
 isMod :: Role -> Bool
@@ -137,11 +148,11 @@ data DefaultColor
   deriving (Eq, Read, Show, Generic, ToJSON, FromJSON)
 
 data ChromaColor = ChromaColor
-  {_hue :: Word
-  ,_chromaLight :: Word -- light mode
-  ,_chromaDark :: Word -- dark mode
-  ,_valueLight :: Word
-  ,_valueDark :: Word
+  {_hue :: Int
+  ,_chromaLight :: Int -- light mode
+  ,_chromaDark :: Int -- dark mode
+  ,_valueLight :: Int
+  ,_valueDark :: Int
   } deriving (Eq, Show)
 
 data ChromaMode
@@ -206,7 +217,7 @@ instance FromJSON ChromaColor where
 
 data UserMessage = UserMessage
   {_senderId :: Int64 -- UserId
-  ,_timestamp :: Word
+  ,_timestamp :: Int
   --,_messageType : Maybe SpecialMessage
   ,_message :: Text
   -- Filter
@@ -242,13 +253,13 @@ data Subscription = Subscription
   {_subberId        :: Int64
   ,_paymentId       :: Int64
   ,_subId           :: Int64
-  ,_subTier         :: Word
+  ,_subTier         :: Int
   ,_maybeGifterId   :: Maybe Int64 -- UserId
   ,_is3MonthPackage :: Bool
   ,_subMessage      :: Text
   ,_subSource       :: Text
   ,_recurring       :: Bool
-  ,_endTime         :: Word
+  ,_endTime         :: Int
   } deriving Show
 
 
@@ -260,7 +271,7 @@ data Subscription = Subscription
 -- Images
 
 data SubBadge = SubBadge
-  {monthsRequired :: Word
+  {monthsRequired :: Int
   ,emote :: Emote
   } deriving (Eq, Show)
 

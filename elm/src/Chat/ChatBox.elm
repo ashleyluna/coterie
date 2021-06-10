@@ -41,8 +41,8 @@ import Update.CommonInfo exposing (..)
 
 
 
-chatBox : Model -> String -> Chat -> ChatBox -> Element ChatBoxMsg
-chatBox model containerName chat cBox =
+chatBox : Model -> ChatLocale -> String -> Chat -> ChatBox -> Element ChatBoxMsg
+chatBox model chatLocale containerName chat cBox =
   let colorPalette = currentColorPalette model
       chatBoxName = containerName ++ "chatbox-"
   in co [width fill, height fill, htmlID "chatBox"] <|
@@ -62,7 +62,7 @@ chatBox model containerName chat cBox =
                            SettingsOverlay info -> wrapper <| settingsOverlay chatBoxName info profile
                            CommunityOverlay info -> wrapper <| communityOverlay chatBoxName info chat.users
                            _ -> []) <|
-                  Element.map ChatRoomMsg <| chatRoom model chatBoxName chat cBox.chatRoom
+                  Element.map ChatRoomMsg <| chatRoom model chatLocale chatBoxName chat cBox.chatRoom
                 _ -> el
                   ([width fill, height fill, scrollbars]
                    ++ let wrapper f = List.singleton <| inFront <| f model cBox
@@ -352,14 +352,6 @@ nameColorSelection model profile info =
       settings = model.commonInfo.settings
       left = info.left
       right = info.right
-      nameColorLevel = case profile.role of
-        ProfileSpecialRole _ -> 2
-        ProfileChatterRole role -> case role.subscription of
-          Just sub -> sub.tier - 1
-          _ -> 0
-      defaultColor = ChromaName <| defaultChromaColor <| ResultE.merge profile.nameColor.defaultNameColor
-      defaultToDefaultColor = Maybe.withDefault defaultColor <|
-        Maybe.map ChromaName profile.nameColor.left
       chromaCircle size themeMode chromaColor = chromaBlock themeMode chromaColor <|
         [HtmlA.style "width" <| String.fromInt size ++ "px"
         ,HtmlA.style "height" <| String.fromInt size ++ "px"
@@ -397,7 +389,7 @@ nameColorSelection model profile info =
                                 ++ "rgb(48.22% 53.34% 100%),"
                                 ++ "rgb(94.13% 21.28% 100%),"
                                 ++ "rgb(100% 26.43% 58.18%))"
-        ,inFront <| In.slider [width <| px 360, height <| px 20]
+        ,inFront <| In.slider [width <| px 370, height <| px 20]
            {min = 0, max = 360, value = toFloat value, step = Just 1
            ,label = In.labelHidden "Hue Slider"
            ,onChange = UpdateChatBoxOverlay << SettingsOverlay << onChange << round
@@ -426,14 +418,14 @@ nameColorSelection model profile info =
        [width fill, spacing 40]
        [co [width fill, spacing 20]
            [el [centerX, Ft.size 18, Ft.color colorPalette.txSoft] <| tx modeName
-           ,ro [centerX, padding 8, spacing 12, Bdr.rounded 40, Bdr.width 2, Bdr.color colorPalette.txSoft
+           ,ro [centerX, padding 10, spacing 12, Bdr.rounded 40, Bdr.color colorPalette.txSoft
                ,Bg.color <| .bgMain <| currentColorPalette_ themeMode]
                [el [] <| chromaCircle 40 themeMode left
                ,el [Ft.size 24] <| chromaUsername themeMode profile.username <|
                 ChromaNameGradient {left = left, right = right, mode = info.mode}
                ,el [] <| chromaCircle 40 themeMode right]]
        ,ro [centerX, spacing 16] <|
-           let showSliders int = co [spacing 20, alpha <| if nameColorLevel >= int then 1 else 0.7]
+           let showSliders int = co [spacing 20, alpha <| if nameColorLevel profile >= int then 1 else 0.7]
            in [showSliders 1 sliders1
               ,el [Ft.size 16, Ft.color colorPalette.txSoft, moveUp 4] <|
                   showSliders 1 [ex [centerX] "Value"
@@ -452,12 +444,7 @@ nameColorSelection model profile info =
           ,ex [centerX, Ft.size 16, Ft.color colorPalette.txSoft3]
               "How Your Username Will Appear In Chat"
           ,el [centerX, Ft.size 28] <|
-              chromaUsername settings.themeMode profile.username <| case nameColorLevel of
-                0 -> defaultColor
-                1 -> defaultToDefaultColor
-                _ -> Maybe.withDefault defaultToDefaultColor <| Maybe.map ChromaNameGradient <|
-                       Maybe.map2 (\left_ right_ -> ChromaNameGradientRecord left_ right_ profile.nameColor.mode)
-                                  profile.nameColor.left profile.nameColor.right]
+              chromaUsername settings.themeMode profile.username <| profileNameColorAppearance profile]
         ,co [centerX, spacing 24, paddingTop 16]
             [ex [centerX, Ft.size 18, Ft.color colorPalette.txSoft]
                 "Default Color"
@@ -470,7 +457,7 @@ nameColorSelection model profile info =
                 ,Pink, Purple, Lavender
                 ])
               ++ [randomColorSelector]]
-        ,case nameColorLevel of
+        ,case nameColorLevel profile of
           2 -> Element.none
           1 -> pg [width <| px 300, centerX, Ft.center, Ft.color colorPalette.highlightRed] <|
                   [tx "You may set a gradient, but the left side color will be used for both sides in chat"]
@@ -614,7 +601,7 @@ registerOverlay info model cBox =
               ,htmlStyle "transition" "bottom 1s ease-in-out"
               ,htmlStyle "-webkit-transition" "bottom 1s ease-in-out" ] <|
               [el [width fill, centerX, Ft.size 20] <|
-                  fieldCheckChatBox model In.username
+                  fieldCheckChatBox model In.text
                     info.invalidUsername
                     (\str -> updateRegister {info | username = str})
                     (\str -> SignUpCheck str)
@@ -642,45 +629,6 @@ registerOverlay info model cBox =
 
 --------------------------------------------------------------------------------
 
-chatBoxOverlayWrapper model title overlay =
-  let colorPalette = currentColorPalette model
-  in co [width fill, height fill, paddingXY 0 16, clipX
-        ,Bg.color colorPalette.bgMain, noSelection] <|
-        [titleHeaderMiddle model title
-        ,co [width fill, height fill, htmlClass "hide-scroll", clipX, scrollbarY, noSelection]
-            overlay
-        ,el [width fill, alignBottom, paddingTop 8] <|
-         el ([width fill, height <| px 40, Bdr.rounded 20
-            ,Bg.color colorPalette.bgMain, Ft.color colorPalette.bgMain3
-            ,mouseOver [Bg.color colorPalette.bgMain3
-                       ,Ft.color colorPalette.bgMain]
-            ,pointer
-            ,Evt.onClick <| SetChatBoxOverlay NoChatBoxOverlay
-            ] ++ colorTransitionStyle) <|
-         ex [centerX, centerY, Ft.bold]
-            "Close"
-        ]
 
-chatBoxOverlayWrapper_ model overlay =
-  let colorPalette = currentColorPalette model
-  in el [width fill, height fill, centerX
-        ,Bg.color colorPalette.bgMain
-        ,paddingEach {bottom = 0, top = 24, left = 24, right = 24}
-        ,clipX, scrollbars, noSelection]
-  <| el [width fill, height fill, htmlClass "hide-scroll", scrollbars]
-        overlay
-
-
--- title with lines on the sides
-sectionTitle : Model -> String -> Element ChatBoxMsg
-sectionTitle model str =
-  let colorPalette = currentColorPalette model
-  in ro [width fill, spacing 16]
-        [el [width fill] <|
-         el [width fill, height <| px 4, Bg.color colorPalette.bgMain2]
-            Element.none
-        ,ex [Ft.size 24, Ft.bold, Ft.color colorPalette.txSoft]
-            str
-        ,el [width fill] <|
-         el [width fill, height <| px 4, Bg.color colorPalette.bgMain2]
-         Element.none]
+chatBoxOverlayWrapper : Model -> String -> List (Element ChatBoxMsg) -> Element ChatBoxMsg
+chatBoxOverlayWrapper = overlayWrapper <| SetChatBoxOverlay NoChatBoxOverlay

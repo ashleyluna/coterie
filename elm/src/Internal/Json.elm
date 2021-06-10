@@ -4,6 +4,7 @@ import Dict
 import Json.Decode as JD
 import Json.Encode as JE
 
+import Internal.Chat exposing (..)
 import Internal.Internal exposing (..)
 import Main.Model exposing (..)
 
@@ -46,14 +47,15 @@ jdProfile = JD.map6 ProfileRecord
     [JD.map ProfileSpecialRole <| JD.map2 ProfileSpecialRoleRecord
       (JD.field "name" JD.string)
       (JD.field "power" JD.int)
-    ,JD.map ProfileChatterRole <| JD.map2 ProfileChatterRoleRecord
+    ,JD.map ProfileChatterRole <| JD.map3 ProfileChatterRoleRecord
       (JD.field "months" JD.int)
       (JD.field "subscription" <| JD.nullable <| JD.map5 SubscriptionRecord
         (JD.field "tier" JD.int)
         (JD.field "gifter" <| JD.nullable JD.string)
         (JD.field "is_3_month_package" JD.bool)
         (JD.field "recurring" JD.bool)
-        (JD.field "end_time" JD.int))])
+        (JD.field "end_time" JD.int))
+      (JD.field "can_post_links" JD.bool)])
   (JD.field "badges" jdBadges)
   (JD.field "pronouns" <| JD.nullable JD.string)
   (JD.field "name_color" <| JD.map4 ProfileNameColorRecord
@@ -164,7 +166,23 @@ jdSubscriber = JD.map Subscriber <| JD.map2 SubscriberRecord
   (JD.field "tier" JD.int)
   (JD.field "months" JD.int)
 
+jdModAction commonInfo = flip JD.andThen (JD.field "type_mod_action" JD.string) <|\str ->
+  let username = JD.field "username" JD.string
+      timestamp = JD.field "timestamp" JD.int
+  in case str of
+       "ban" -> JD.map Ban <| JD.map2 BanRecord
+         username
+         timestamp
+       "censor" -> JD.map Censor <| JD.map2 CensorRecord
+         username
+         timestamp
+       "comment" -> JD.map ModComment <| JD.map3 ModCommentRecord
+         username
+         timestamp
+         (JD.field "message" <| JD.map (parseMessage_ commonInfo) JD.string
 
+         )
+       _ -> JD.fail "Failed To Read type_mod_action Type"
 
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------

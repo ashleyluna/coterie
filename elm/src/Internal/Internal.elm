@@ -1,10 +1,13 @@
 module Internal.Internal exposing (..)
 
 import Char.Extra as CharE exposing (..)
+import Dict
 import Html.Attributes as HtmlA
 import Http
 import Json.Encode as JE
-import List.Extra as ListE exposing (..)
+import List.Extra as ListE
+import Maybe.Extra as MaybeE
+import Result.Extra as ResultE
 import Parser exposing ((|.),(|=))
 import Process
 import Task
@@ -53,6 +56,7 @@ wait n task = Task.andThen (\_ -> task) <| Process.sleep n
 waitAFrame task = Task.andThen (\_ -> task) <| Process.sleep 30
 waitHalfASec task = Task.andThen (\_ -> task) <| Process.sleep 500
 
+microToMillis time = round <| toFloat time / 1000
 
 subCost : Int -> Int -> (Int, Int, Int)
 subCost tier num = -- num is in case of gifts
@@ -71,6 +75,14 @@ lastWord str = String.fromList <| List.reverse <|
                ListE.takeWhile (not << CharE.isSpace) <|
                String.toList <| String.reverse str
 
+
+renderAll = RenderOptions True True
+
+apiPOSTDefault apiPath requestType body decoder =
+  cmdMsg <| ApiPOST [] apiPath requestType body decoder <|
+    \response -> case response of
+      Err err -> httpErrorMsg err
+      Ok resMsg -> resMsg
 
 apiUrl url =
   (if url.protocol == Http then "http" else "https")
@@ -177,22 +189,20 @@ initialChatBox =
 initialChatRoom =
   {chatRoomOverlay = NoChatRoomOverlay
   ,mentionBox = Nothing
-  ,inputFocused = False
   ,input = ""
   ,messageRoom = initialMessageRoom}
 
 initialMessageRoom =
-  {viewport = Nothing
-  ,infiniteScroll = Nothing
-  ,autoScroll = Just True
-  ,content = {highlightedUsers = []
-             ,hoverUsername = False}}
+  {hoverUsername = False
+  ,highlightBox = Dict.empty
+  ,elmBar = {viewport = Nothing
+            ,infiniteScroll = Nothing
+            ,autoScroll = Just True}}
 
 initialElmBar =
   {viewport = Nothing
   ,infiniteScroll = Just {direction = False, stack = 1}
-  ,autoScroll = Nothing
-  ,content = ()}
+  ,autoScroll = Nothing}
 
 initialMainMainBoxPageInfo = MainMainBoxPage
 
@@ -216,6 +226,50 @@ initialHomeSubPageAgreementInfo = HomeSubPageAgreement
 
 
 --------------------------------------------------------------------------------
+
+profileIsMod profile = case profile of
+  Just profile_ -> case profile_.role of
+    ProfileSpecialRole specialRole -> specialRole.power >= 1
+    _ -> False
+  _ -> False
+
+profileRenderOptions profile = case profile.role of
+    ProfileChatterRole chatterRole -> RenderOptions
+      (chatterRole.subscription /= Nothing)
+      chatterRole.canPostLinks
+    _ -> renderAll
+
+
+profileToChatUser : ProfileRecord -> ChatUser
+profileToChatUser profile = ChatUser
+  profile.username
+  (case profile.role of
+    ProfileSpecialRole role -> Just <| Special role.name
+    ProfileChatterRole role -> case role.subscription of
+      Just sub -> Just <| Subscriber <| SubscriberRecord sub.tier role.months
+      _ -> Nothing)
+  (MaybeE.toList profile.badges.firstBadge ++ MaybeE.toList profile.badges.secondBadge)
+  profile.pronouns
+  (profileNameColorAppearance profile)
+
+-- how te users name will appear in chat
+profileNameColorAppearance profile =
+  let defaultColor = ChromaName <| defaultChromaColor <| ResultE.merge profile.nameColor.defaultNameColor
+      defaultToDefaultColor = Maybe.withDefault defaultColor <|
+        Maybe.map ChromaName profile.nameColor.left
+  in case nameColorLevel profile of
+       0 -> defaultColor
+       1 -> defaultToDefaultColor
+       _ -> Maybe.withDefault defaultToDefaultColor <| Maybe.map ChromaNameGradient <|
+              Maybe.map2 (\left_ right_ -> ChromaNameGradientRecord left_ right_ profile.nameColor.mode)
+                         profile.nameColor.left profile.nameColor.right
+
+nameColorLevel profile = case profile.role of
+  ProfileSpecialRole _ -> 2
+  ProfileChatterRole role -> case role.subscription of
+    Just sub -> sub.tier - 1
+    _ -> 0
+
 
 
 isSubPageOn : HomeSubPage -> HomeSubPage -> Bool
@@ -260,12 +314,6 @@ getCsrfToken cookie =
 jeMaybe f m = case m of
   Just a -> f a
   _ -> JE.null
-
-
-
-defaultRequestResponse response = case response of
-  Err err -> httpErrorMsg err
-  Ok resMsg -> resMsg
 
 
 

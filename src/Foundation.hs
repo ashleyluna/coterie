@@ -49,13 +49,13 @@ data App = App
   -- write global events
   , tqGlobalEvents        :: TQueue GlobalEvent
   -- ws connections read global events with a custom pubsub
-  , tvWSConns             :: TVHashMap Word (GESub,TQueue GlobalEvent)
+  , tvWSConns             :: TVHashMap Int (GESub,TQueue GlobalEvent)
   -- for multiple ws connections logged in as the same user
-  , tvUserConns           :: TVHashMap Int64 (TVar User, HashMap Word (TQueue Notification))
+  , tvUserConns           :: TVHashMap Int64 (TVar User, HashMap Int (TQueue Notification))
 
   -- Main
   , tvMainChat            :: TVIntMap UserMessage -- timeStamp
-  --, tvMainChatDelayed     :: TVIntMap UserMessage
+  , tvMainChatDelayed     :: TVIntMap UserMessage
   , tvStreamStatus        :: TVar StreamStatus
   --, tvShoutOutBox  :: TVar ShoutOutBox
   --, tvSubGiftersLeaderBoard
@@ -64,7 +64,7 @@ data App = App
   , tvModChat             :: TVIntMap UserMessage -- timeStamp
   --, tvModerationHistory :: TIntMap ModAction -- timeStamp
 
-  --, tvCreators            :: TVHashMap Int64 Creator -- userId
+  , tvCreators            :: TVHashMap Int64 Creator -- userId
 
   -- Images --Stand In For Database
   , tvSpecialRoles        :: TVHashMap Int64 SpecialRole
@@ -154,7 +154,7 @@ instance Yesod App where
         -> Bool       -- ^ Whether or not this is a "write" request.
         -> Handler AuthResult
     isAuthorized route writable =
-      let isAdmin :: Word -> Handler AuthResult
+      let isAdmin :: Int -> Handler AuthResult
           isAdmin reqPower = maybeAuth >>= \case
             Nothing -> return AuthenticationRequired
             Just (Entity _ (DB.User {..})) ->

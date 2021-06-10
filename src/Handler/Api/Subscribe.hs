@@ -35,8 +35,6 @@ import Import
 import qualified Model as DB
 
 import Internal.Api
-import Internal.LiveInfo
-import Internal.Payment
 import Internal.StreamerInfo
 import Internal.User
 
@@ -137,20 +135,20 @@ sub random (user ambiguous)
 
 data SubscribeRequest
   = SubscribeSelf
-      {tier :: Word
+      {tier :: Int
       ,threeMonthPackage :: Bool
       ,message :: Text
       ,autoRenew :: Bool}
   | SubscribeFriend
-      {tier :: Word
+      {tier :: Int
       ,threeMonthPackage :: Bool
       ,message :: Text
       ,friendName :: Text}
   | SubscribeRandom
-      {tier :: Word
+      {tier :: Int
       ,threeMonthPackage :: Bool
       ,message :: Text
-      ,numOfGifts :: Word}
+      ,numOfGifts :: Int}
   | Donation
       {donorName :: Text
       ,amount :: Double

@@ -94,6 +94,8 @@ type Msg
 
 
 type ChatMsg = AddChatMessage ChatMessage
+             | AddDelatedUserMessage UserMessageRecord
+             | AddTempUserMessage TempUserMessageRecord
              | RemoveUserMessage String String -- username message
              | AddChatUser ChatUser
              | RemoveChatUser String -- username
@@ -142,11 +144,11 @@ type HomePageMsg =
 
 type ChatPageMsg = ChatPageChatBoxMsg ChatBoxMsg
 
-type ChatStreamPageMsg = ChatStreamPageMessageRoomMsg (ElmBarMsg MessageRoomMsg)
+type ChatStreamPageMsg = ChatStreamPageMessageRoomMsg MessageRoomMsg
 
 type StreamerPageMsg = StreamerPageChatBoxMsg ChatBoxMsg
                      | StreamerPageModRoomMsg ChatRoomMsg
-                     | StreamerPageMentionMessageRoomMsg (ElmBarMsg MessageRoomMsg)
+                     | StreamerPageMentionMessageRoomMsg MessageRoomMsg
 
                      | OverStreamerPage (StreamerPageInfo -> StreamerPageInfo)
                      | StreamStatusSetter (Maybe Bool)
@@ -186,23 +188,28 @@ type ChatBoxMsg = MsgChatBoxMsg Msg
                 | POSTSetNameColor ChromaColorRecord ChromaColorRecord ChromaMode
                -- | POSTSetMode ChromaMode
 
-               | ChatBoxElmBarMsg (ElmBarMsg ChatBoxMsg)
+               | ChatBoxElmBarMsg ElmBarMsg
                | ChatBoxTriggerAutoScrollDown String
 
 type ChatRoomMsg = MsgChatRoomMsg Msg
                  | BatchChatRoomMsgs (List ChatRoomMsg)
-                 | MessageRoomMsg (ElmBarMsg MessageRoomMsg)
+                 | UserChatRoomMsgNow (Posix -> ChatRoomMsg)
+                 | MessageRoomMsg MessageRoomMsg
                  | SetChatRoomOverlay ChatRoomOverlay
                  | UpdateChatRoomOverlay ChatRoomOverlay
                  | SetChatRoom ChatRoom
+                 | OverChatRoom (ChatRoom -> ChatRoom)
                  | SetMentionBox (Maybe Int)
                  | AddMention String
-                 | UpdateChatRoomInput String
                  | AddEmoteChatRoomInput String
+                 | SendUserMessage ChatLocale String Int
 
 type MessageRoomMsg = MsgMessageRoomMsg Msg
-                    | SetHighlightUsersList (List String)
+                    | MessageRoomElmBarMsg ElmBarMsg
+                    | NoHighlights
                     | UpdateHighlightUsersList String
+                    | AddUserInfo String UserInfo
+                    --| Set
                     | SetHoverUsername Bool
                    -- auto scroll stuff
 
@@ -222,7 +229,7 @@ type SocketRequest
       }
   | GetStreamStatus
   | GetUsersInChat
-  | UserMessageRequest ChatLocale String
+  --| UserMessageRequest ChatLocale String
 
 
 type ChatLocale
@@ -234,11 +241,11 @@ type ChatLocale
 
 
 
-type ElmBarMsg msg = ElmBarMsg msg
-                   | BatchElmBarMsgs (List (ElmBarMsg msg))
-                   | GetElmBarViewport String (String -> Viewport -> ElmBarMsg msg)
-                   | SetElmBarViewPort Viewport
-                   | OnScroll String Viewport
-                   | ResetScrollStack
-                   | AutoScrollDown Bool String Viewport
-                   | ElmBarWait (ElmBarMsg msg)
+type ElmBarMsg = BatchElmBarMsgs (List ElmBarMsg)
+               | GetElmBarViewport String (String -> Viewport -> ElmBarMsg)
+               | SetElmBarViewPort Viewport
+               | OnScroll String Viewport
+               | ResetScrollStack
+               | AutoScrollDown Bool String Viewport
+               | ElmBarWait ElmBarMsg
+              -- | ElmBarMsg msg

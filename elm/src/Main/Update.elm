@@ -54,7 +54,7 @@ generalMsgs model msg next =
   in case msg of
        BatchMsgs msgs -> pair model <| Cmd.batch <| List.map cmdMsg msgs
        MsgCmd cmd -> (model, cmd)
-       UseNow f -> pair model <| do <| flip Task.map Time.now f
+       UseNow f -> pair model <| do <| Task.map f Time.now
        --SetUp -> (model, Cmd.none) -- TODO
        LogMessage str -> pair model <| logMessage str
        WaitHalfASec message -> pair model <| do <|

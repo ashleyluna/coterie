@@ -1,15 +1,18 @@
 module Update.ChatBox exposing (..)
 
 import Char.Extra as CharE exposing (..)
+import Dict
 import Http
 import Json.Decode as JD
 import Json.Encode as JE
 import List.Extra as ListE exposing (..)
+import String.Extra as StringE
 import Task
 import Time exposing (Posix, Zone)
 
 import String.Extra exposing (clean)
 
+import Internal.Chat exposing (..)
 import Internal.Internal exposing (..)
 import Internal.Json exposing (..)
 import Main.Model exposing (..)
@@ -37,18 +40,18 @@ import Update.ElmBar exposing (..)
 
 
 
-updateChatBox : ChatLocale -> UpdateElement ChatBoxMsg ChatBox
-updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
+updateChatBox : UpdateElement ChatBoxMsg ChatBox
+updateChatBox model msg chatBox liftChatBoxMsg setChatBox =
   let a = 1
   in case msg of
        MsgChatBoxMsg msg_ -> pair model <| cmdMsg msg_
        BatchChatBoxMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftChatBoxMsg) msgs
-       ChatRoomMsg chatRoomMsg -> updateChatRoom chatLocale model chatRoomMsg
+       ChatRoomMsg chatRoomMsg -> updateChatRoom model chatRoomMsg
          chatBox.chatRoom (liftChatBoxMsg << ChatRoomMsg)
          <| \newChatRoom -> setChatBox {chatBox | chatRoom = newChatRoom}
        WaitHalfASecChatBox message -> pair model <| do <|
          waitHalfASec <| Task.succeed <| liftChatBoxMsg message
-       ChatBoxElmBarMsg elmBarMsg -> updateElmBar_ model
+       ChatBoxElmBarMsg elmBarMsg -> updateElmBar model
          elmBarMsg chatBox.elmBar
          (liftChatBoxMsg << ChatBoxElmBarMsg)
          <| \newElmBar -> setChatBox {chatBox | elmBar = newElmBar}
@@ -89,12 +92,11 @@ updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
                            POSTSignUpCheck strCheck
                 else Cmd.none
               _ -> Cmd.none
-       POSTSignUpCheck strCheck -> pair model <| cmdMsg <|
-         ApiPOST [] "register/check" "check_username"
-           [pair "username" <| JE.string strCheck]
-           (JD.map (liftChatBoxMsg << UpdateSignupCheck strCheck)
-                  (JD.field "check_result" JD.int))
-           <| defaultRequestResponse
+       POSTSignUpCheck strCheck -> pair model <|
+         apiPOSTDefault "register/check" "check_username"
+           [pair "username" <| JE.string strCheck] <|
+           JD.map (liftChatBoxMsg << UpdateSignupCheck strCheck)
+                  (JD.field "check_result" JD.int)
        {- this message could exist in POSTSignUpCheck, but if the response takes
           a long time, it could break the page by resetting the model -}
        UpdateSignupCheck strCheck int -> noCmd <| setChatBox <|
@@ -124,51 +126,45 @@ updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
              then cmdMsg <| liftChatBoxMsg <| POSTPronounsCheck str
              else Cmd.none
            _ -> Cmd.none
-       POSTPronounsCheck str -> pair model <| cmdMsg <|
-         ApiPOST [] "profile" "check_pronouns"
-           [pair "pronouns" <| JE.string str]
-           (flip JD.map (JD.field "check_result" JD.int) <| \int ->
+       POSTPronounsCheck str -> pair model <|
+         apiPOSTDefault "profile" "check_pronouns"
+           [pair "pronouns" <| JE.string str] <|
+           flip JD.map (JD.field "check_result" JD.int) <| \int ->
              liftChatBoxMsg <| OverSettingsOverlay <| \info ->
                   if info.pronouns /= str then info
-                     else  {info | invalidPronouns = int})
-           defaultRequestResponse
-       POSTSetPronouns str -> pair model <| cmdMsg <|
-         ApiPOST [] "profile" "set_pronouns"
-           [pair "pronouns" <| JE.string str]
-           (flip JD.map (JD.field "pronouns" <| JD.nullable JD.string) <| \newStr ->
+                     else  {info | invalidPronouns = int}
+       POSTSetPronouns str -> pair model <|
+         apiPOSTDefault "profile" "set_pronouns"
+           [pair "pronouns" <| JE.string str] <|
+           flip JD.map (JD.field "pronouns" <| JD.nullable JD.string) <| \newStr ->
              OverProfile <| \profile ->
                {profile | pronouns = newStr}
-           )
-           defaultRequestResponse
-       POSTEquipBadge str int -> pair model <| cmdMsg <|
-         ApiPOST [] "profile" "equip_badge"
-           [pair ("equip_" ++ String.fromInt int) <| JE.string str]
-           (flip JD.map jdEquipedBadges <| (\(firstBadge, secondBadge) ->
-             OverProfile <| setProfileBadges firstBadge secondBadge))
-           defaultRequestResponse
-       POSTUnEquipBadge int -> pair model <| cmdMsg <|
-         ApiPOST [] "profile" ("unequip_badge_" ++ String.fromInt int)
-           []
-           (flip JD.map jdEquipedBadges <| (\(firstBadge, secondBadge) ->
-             OverProfile <| setProfileBadges firstBadge secondBadge))
-           defaultRequestResponse
-       POSTSetDefaultColor maybeColor -> pair model <| cmdMsg <|
-         ApiPOST [] "profile" "set_default_color"
-           [pair "default_color" <| jeMaybe jeDefaultNameColor maybeColor]
-           (flip JD.map jdDefaultNameColor (\c -> BatchMsgs
+       POSTEquipBadge str int -> pair model <|
+         apiPOSTDefault "profile" "equip_badge"
+           [pair ("equip_" ++ String.fromInt int) <| JE.string str] <|
+           flip JD.map jdEquipedBadges <| (\(firstBadge, secondBadge) ->
+             OverProfile <| setProfileBadges firstBadge secondBadge)
+       POSTUnEquipBadge int -> pair model <|
+         apiPOSTDefault "profile" ("unequip_badge_" ++ String.fromInt int)
+           [] <|
+           flip JD.map jdEquipedBadges <| (\(firstBadge, secondBadge) ->
+             OverProfile <| setProfileBadges firstBadge secondBadge)
+       POSTSetDefaultColor maybeColor -> pair model <|
+         apiPOSTDefault "profile" "set_default_color"
+           [pair "default_color" <| jeMaybe jeDefaultNameColor maybeColor] <|
+           flip JD.map jdDefaultNameColor (\c -> BatchMsgs
              [liftChatBoxMsg <| OverSettingsOverlay <| \info ->
                {info | defaultNameColor = maybeColor}
              ,OverProfile <| \profile ->
                let nameColor = profile.nameColor
                in {profile | nameColor =
-                  {nameColor | defaultNameColor = c}}]))
-           defaultRequestResponse
-       POSTSetNameColor left right mode -> pair model <| cmdMsg <|
-         ApiPOST [] "profile" "set_name_color"
+                  {nameColor | defaultNameColor = c}}])
+       POSTSetNameColor left right mode -> pair model <|
+         apiPOSTDefault "profile" "set_name_color"
            [pair "left" <| jeChromaColor left
            ,pair "right" <| jeChromaColor right
-           ,pair "mode" <| JE.string <| showChromaMode mode]
-           (JD.map3 (\left_ right_ mode_ -> BatchMsgs
+           ,pair "mode" <| JE.string <| showChromaMode mode] <|
+           JD.map3 (\left_ right_ mode_ -> BatchMsgs
              [OverProfile <| \profile -> {profile | nameColor =
                ProfileNameColorRecord profile.nameColor.defaultNameColor
                  left_ right_ mode_}
@@ -176,10 +172,7 @@ updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
                 {info | mode = mode_}])
              (JD.field "left" <| JD.nullable jdChromaColor)
              (JD.field "right" <| JD.nullable jdChromaColor)
-             (JD.field "mode" jdChromaMode))
-           <| \response -> case response of
-               Err err -> httpErrorMsg err
-               Ok resMsg -> resMsg
+             (JD.field "mode" jdChromaMode)
        --POSTSetMode mode -> pair model <| cmdMsg <|
        --  ApiPOST [] "profile" "set_mode"
        --    [pair "mode" <| JE.string <| showChromaMode mode]
@@ -190,7 +183,7 @@ updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
        --        Ok resMsg -> resMsg
        ChatBoxTriggerAutoScrollDown str -> pair model <| cmdMsg <|
          liftChatBoxMsg <| BatchChatBoxMsgs <|
-           [ChatRoomMsg <| MessageRoomMsg <|
+           [ChatRoomMsg <| MessageRoomMsg <| MessageRoomElmBarMsg <|
              GetElmBarViewport (str ++ "chatbox-chatroom-messageroom-elmbar") (AutoScrollDown False)]
            ++ let autoScroll = ChatBoxElmBarMsg << flip GetElmBarViewport (AutoScrollDown False)
               in case chatBox.chatBoxOverlay of
@@ -200,13 +193,14 @@ updateChatBox chatLocale model msg chatBox liftChatBoxMsg setChatBox =
                    _ -> []
 
 
-updateChatRoom : ChatLocale -> UpdateElement ChatRoomMsg ChatRoom
-updateChatRoom chatLocale model msg chatRoom liftChatRoomMsg setChatRoom =
+updateChatRoom : UpdateElement ChatRoomMsg ChatRoom
+updateChatRoom model msg chatRoom liftChatRoomMsg setChatRoom =
   let a = 1
   in case msg of
        MsgChatRoomMsg msg_ -> pair model <| cmdMsg msg_
        BatchChatRoomMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftChatRoomMsg) msgs
-       MessageRoomMsg elmBarMsg -> updateElmBar updateMessageRoom model
+       UserChatRoomMsgNow f -> pair model <| do <| Task.map (liftChatRoomMsg << f) Time.now
+       MessageRoomMsg elmBarMsg -> updateMessageRoom model
          elmBarMsg chatRoom.messageRoom
          (liftChatRoomMsg << MessageRoomMsg)
          <| \newMessageRoom -> setChatRoom {chatRoom | messageRoom = newMessageRoom}
@@ -225,6 +219,7 @@ updateChatRoom chatLocale model msg chatRoom liftChatRoomMsg setChatRoom =
            if isChatRoomOverlayOn chatRoom chatRoomOverlay
               then chatRoomOverlay else chatRoom.chatRoomOverlay}
        SetChatRoom cRoom -> noCmd <| setChatRoom cRoom
+       OverChatRoom f -> noCmd <| setChatRoom <| f chatRoom
        SetMentionBox m ->
          (setChatRoom {chatRoom | mentionBox = m}
          ,Cmd.none --cmdMsg TriggerAutoScrollDown
@@ -234,25 +229,37 @@ updateChatRoom chatLocale model msg chatRoom liftChatRoomMsg setChatRoom =
            | input = (String.fromList <| List.reverse <|
                       ListE.dropWhile (not << CharE.isSpace) <|
                       String.toList <| String.reverse chatRoom.input)
-                     ++ str
+                      ++ str ++ " "
            , mentionBox = Nothing}
          ,Cmd.none --cmdMsg TriggerAutoScrollDown
-         )
-       UpdateChatRoomInput message ->
-         (setChatRoom {chatRoom
-           | input = if String.contains "\n" message then "" else message
-           , mentionBox = if lastWord message == "" then Nothing else chatRoom.mentionBox
-           }
-         ,cmdIf (String.contains "\n" message) <| cmdMsg <| BatchMsgs <|
-           [SocketRequest <|
-             UserMessageRequest chatLocale message
-           ]
          )
        AddEmoteChatRoomInput str -> noCmd <| setChatRoom
          {chatRoom | input =
            if String.right 1 chatRoom.input == " " || chatRoom.input == ""
               then chatRoom.input ++ str ++ " "
               else chatRoom.input ++ " " ++ str ++ " "}
+       SendUserMessage locale str time -> case model.commonInfo.profile of
+         Nothing -> noCmd model
+         Just profile ->
+           let localeName = case locale of
+                 MainChat -> [pair "type_chat" <| JE.string "main"]
+                 ModChat -> [pair "type_chat" <| JE.string "mod"]
+                 Whisper receiver -> [pair "type_chat" <| JE.string "whisper"
+                                     ,pair "receiver" <| JE.string receiver]
+           in pair model <| Cmd.batch
+                [apiPOSTDefault "chat" "message"
+                  ([pair "message" <| JE.string <| String.trim <| StringE.clean str
+                   ] ++ localeName) <|
+                  JD.succeed NoMsg
+                ,cmdMsg <| case locale of
+                  MainChat -> MainChatMsg <| AddTempUserMessage <| TempUserMessageRecord time <|
+                    parseMessage model.commonInfo model.liveInfo.mainChat.users
+                     (profileRenderOptions profile) str
+                  _ -> ModChatMsg <| AddTempUserMessage <| TempUserMessageRecord time <|
+                    parseMessage model.commonInfo model.liveInfo.modChat.users
+                     (profileRenderOptions profile) str
+                  --Whisper receiver -> Whisper receiver <| AddTempUserMessage message
+               ]
 
 
 
@@ -262,15 +269,34 @@ updateMessageRoom model msg messageRoom liftMessageRoomtMsg setMessageRoom =
   let a = 1
   in case msg of
        MsgMessageRoomMsg msg_ -> pair model <| cmdMsg msg_
-       SetHighlightUsersList highlightedUsers -> noCmd <| setMessageRoom <|
-         {messageRoom | highlightedUsers = highlightedUsers}
-       UpdateHighlightUsersList username -> noCmd <| setMessageRoom <|
-         {messageRoom | highlightedUsers =
-           let f names = case names of
-                 [] -> [username]
-                 name :: moreNames -> if username == name
-                   then moreNames else name :: f moreNames
-           in f messageRoom.highlightedUsers}
+       MessageRoomElmBarMsg msg_ -> updateElmBar model msg_ messageRoom.elmBar
+         (liftMessageRoomtMsg << MessageRoomElmBarMsg)
+         <| \newElmBar -> setMessageRoom {messageRoom | elmBar = newElmBar}
+       NoHighlights -> noCmd <| setMessageRoom <|
+         {messageRoom | highlightBox = Dict.empty}
+       UpdateHighlightUsersList username -> if not <| Dict.member username messageRoom.highlightBox
+         then (setMessageRoom <|
+                {messageRoom | highlightBox = Dict.insert username Nothing messageRoom.highlightBox
+                }
+              ,apiPOSTDefault "mod" "get_user_info"
+                 [pair "username" <| JE.string username] <|
+                 JD.map (liftMessageRoomtMsg << AddUserInfo username) <| JD.map5 UserInfo
+                   (JD.succeed username)
+                   (JD.field "pronouns" JD.string)
+                   (JD.field "num_months_subbed" JD.int)
+                   (JD.field "season" JD.int)
+                   (JD.maybe <| JD.map3 UserModInfo
+                     (JD.field "account_creation" JD.int)
+                     (JD.field "num_messages" JD.int)
+                     (JD.field "mod_actions" <| JD.list <| jdModAction model.commonInfo)
+                   )
+              )
+         else noCmd <| setMessageRoom {messageRoom | highlightBox =
+                Dict.remove username messageRoom.highlightBox}
+       AddUserInfo username userInfo -> noCmd <| setMessageRoom <|
+         {messageRoom | highlightBox = flip Dict.map messageRoom.highlightBox <|
+           \huUsername oldUserInfo -> if huUsername /= username then oldUserInfo else Just userInfo
+         }
        -- event listeners stack with containers having priority
        -- el [Evt.onCLick] <- prioity
        --    el [Evt.onCLick] <- ignored

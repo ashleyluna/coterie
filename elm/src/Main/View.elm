@@ -64,7 +64,7 @@ chatPage model chatPageInfo =
   in finishedLayout model <| el
      [width fill, height fill] <|
      Element.map (ChatPageMsg << ChatPageChatBoxMsg) <|
-       chatBox model "chatpage-" mainChat chatPageInfo.chatBox
+       chatBox model MainChat "chatpage-" mainChat chatPageInfo.chatBox
 
 
 chatStreamPage model chatStreamInfo =

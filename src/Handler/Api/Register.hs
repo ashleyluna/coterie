@@ -47,10 +47,9 @@ import Web.Cookie
 
 
 import Internal.Api
-import Internal.Images
+import Internal.StreamerInfo
 import Internal.Twitch
 import Internal.User
-import Internal.StreamerInfo
 
 
 -- check username
@@ -137,7 +136,7 @@ getRegTwitchR = do
               --       else Nothing
               updateUserTwitchInfo userId = runDB $ do
                 user <- P.get userId
-                let season = fromMaybe (toEnum $ List.length $ seasonEndTimes streamerInfo) $ do
+                let season = fromMaybe (List.length $ seasonEndTimes streamerInfo) $ do
                       oldSeason <- DB.userSeason <$> user
                       twitchFollowTime <- maybeTwitchFollowedAt
                       return $ min oldSeason $ assignSeason twitchFollowTime

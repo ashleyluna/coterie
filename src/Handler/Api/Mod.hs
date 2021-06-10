@@ -29,11 +29,9 @@ import Import
 import qualified Model as DB
 
 import Internal.Api
-import Internal.LiveInfo
-import Internal.Payment
 import Internal.StreamerInfo
 import Internal.User
-import Internal.WSRR
+import Internal.WS
 
 postModR :: Handler Value
 postModR = do

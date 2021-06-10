@@ -80,7 +80,7 @@ updatePage model msg next = case (msg, model.page) of
   (ChatStreamPageMsg chatStreamPageMsg, ChatStreamPage chatStreamPageInfo) ->
     updateChatStreamPageInfo model chatStreamPageMsg chatStreamPageInfo
   (TriggerAutoScrollDown, ChatStreamPage chatStreamPageInfo) -> pair model <| cmdMsg <|
-    ChatStreamPageMsg <| ChatStreamPageMessageRoomMsg <|
+    ChatStreamPageMsg <| ChatStreamPageMessageRoomMsg <| MessageRoomElmBarMsg <|
       GetElmBarViewport "chatstreampage-elmbar" <| AutoScrollDown False
 
 
@@ -89,9 +89,9 @@ updatePage model msg next = case (msg, model.page) of
   (TriggerAutoScrollDown, StreamerPage streamerPageInfo) -> pair model <| cmdMsg <|
     BatchMsgs
       [StreamerPageMsg <| StreamerPageChatBoxMsg <| ChatBoxTriggerAutoScrollDown "streamerpage-"
-      ,StreamerPageMsg <| StreamerPageModRoomMsg <| MessageRoomMsg <|
+      ,StreamerPageMsg <| StreamerPageModRoomMsg <| MessageRoomMsg <| MessageRoomElmBarMsg <|
         GetElmBarViewport "streamerpage-modchat-chatroom-messageroom-elmbar" (AutoScrollDown False)
-      ,StreamerPageMsg <| StreamerPageMentionMessageRoomMsg <|
+      ,StreamerPageMsg <| StreamerPageMentionMessageRoomMsg <| MessageRoomElmBarMsg <|
         GetElmBarViewport "streamerpage-mention-messageroom-elmbar" <| AutoScrollDown False
       ]
 
@@ -109,7 +109,7 @@ updateHomePageInfo model msg homePageInfo =
        HomeTestMsg subPage -> noCmd <| setHomePageInfo
          {homePageInfo | subPage = if isSubPageOn homePageInfo.subPage subPage
             then subPage else homePageInfo.subPage}
-       HomeChatBoxMsg chatBoxMsg -> updateChatBox MainChat model chatBoxMsg homePageInfo.chatBox
+       HomeChatBoxMsg chatBoxMsg -> updateChatBox model chatBoxMsg homePageInfo.chatBox
          (HomePageMsg << HomeChatBoxMsg) <|
          \newChatBox -> setHomePageInfo <| {homePageInfo | chatBox = newChatBox}
 
@@ -189,12 +189,11 @@ updateHomePageInfo model msg homePageInfo =
              then do <| Task.succeed <| HomePageMsg <| POSTGiftFriendCheck strCheck
              else Cmd.none
            _ -> Cmd.none
-       POSTGiftFriendCheck strCheck -> pair model <| cmdMsg <|
-         ApiPOST [] "subscribe/check" "check_username"
-           [pair "username" <| JE.string strCheck]
-           (JD.map (HomePageMsg << UpdateGiftFriendCheck strCheck)
-                   (JD.field "username" JD.int))
-           <| defaultRequestResponse
+       POSTGiftFriendCheck strCheck -> pair model <|
+         apiPOSTDefault "subscribe/check" "check_username"
+           [pair "username" <| JE.string strCheck] <|
+           JD.map (HomePageMsg << UpdateGiftFriendCheck strCheck)
+                   (JD.field "username" JD.int)
        {- this message could exist in POSTGiftFriendCheck, but if the response takes
           a long time, it could break the page by resetting the model -}
        UpdateGiftFriendCheck strCheck int -> noCmd <| setHomePageInfo
@@ -204,27 +203,25 @@ updateHomePageInfo model msg homePageInfo =
                 if info.giftFriendSearch == strCheck
                    then {info | inValidGiftFriendSearch = int} else info
               _ -> homePageInfo.subPage}
-       POSTSubscription info -> pair model <| cmdMsg <|
+       POSTSubscription info -> pair model <|
          let (subscribeType, subDataType, subJson) = case info.recipient of
                Positive -> ("subscribe_self", "auto_renew", JE.bool info.autoRenew)
                Neutral -> ("subscribe_friend", "username", JE.string info.giftFriendSearch)
                Negative -> ("subscribe_random", "num_of_gifts", JE.int info.numberOfRandomGiftSubs)
-         in ApiPOST [] "subscribe" subscribeType
+         in apiPOSTDefault "subscribe" subscribeType
               [pair "tier" <| JE.int info.tier
               ,pair "3_month_package" <| JE.bool info.month3Package
               ,pair "message" <| JE.string info.message
-              ,pair subDataType subJson]
-              (JD.succeed NoMsg)
-              <| defaultRequestResponse
+              ,pair subDataType subJson] <|
+              JD.succeed NoMsg
        POSTDonation info -> case String.toInt info.amount of
          Nothing -> noCmd model
-         Just amount -> pair model <| cmdMsg <|
-           ApiPOST [] "subscribe" "donation"
+         Just amount -> pair model <|
+           apiPOSTDefault "subscribe" "donation"
              [pair "name" <| JE.string info.name
              ,pair "amount" <| JE.int amount
-             ,pair "message" <| JE.string info.message]
-             (JD.succeed NoMsg)
-             <| defaultRequestResponse
+             ,pair "message" <| JE.string info.message] <|
+             JD.succeed NoMsg
 
 
 --------------------------------------------------------------------------------
@@ -255,7 +252,7 @@ updateChatPageInfo : UpdatePage ChatPageMsg ChatPageInfo
 updateChatPageInfo model msg chatPageInfo =
   let setChatPageInfo info = {model | page = ChatPage info}
   in case msg of
-       ChatPageChatBoxMsg chatBoxMsg -> updateChatBox MainChat model chatBoxMsg chatPageInfo.chatBox
+       ChatPageChatBoxMsg chatBoxMsg -> updateChatBox model chatBoxMsg chatPageInfo.chatBox
          (ChatPageMsg << ChatPageChatBoxMsg) <|
          \newChatBox -> setChatPageInfo <| {chatPageInfo | chatBox = newChatBox}
 
@@ -265,8 +262,8 @@ updateChatStreamPageInfo : UpdatePage ChatStreamPageMsg ChatStreamPageInfo
 updateChatStreamPageInfo model msg chatStreamPageInfo =
   let setChatStreamPageInfo info = {model | page = ChatStreamPage info}
   in case msg of
-       ChatStreamPageMessageRoomMsg elmBarMsg -> updateElmBar updateMessageRoom model
-         elmBarMsg chatStreamPageInfo.messageRoom
+       ChatStreamPageMessageRoomMsg messageRoomMsg -> updateMessageRoom model
+         messageRoomMsg chatStreamPageInfo.messageRoom
          (ChatStreamPageMsg << ChatStreamPageMessageRoomMsg)
          <| \newMessageRoom -> setChatStreamPageInfo {chatStreamPageInfo | messageRoom = newMessageRoom}
       -- ChatStreamPageMessageRoomMsg mRoomMsg -> updateMessageRoom model mRoomMsg chatStreamPageInfo.messageRoom
@@ -285,24 +282,23 @@ updateStreamerPageInfo model msg streamerPageInfo =
         StreamerPage _ -> StreamerPage <| info
         anyOtherPage -> anyOtherPage}
   in case msg of
-       StreamerPageChatBoxMsg chatBoxMsg -> updateChatBox MainChat model chatBoxMsg streamerPageInfo.chatBox
+       StreamerPageChatBoxMsg chatBoxMsg -> updateChatBox model chatBoxMsg streamerPageInfo.chatBox
          (StreamerPageMsg << StreamerPageChatBoxMsg) <|
          \newChatBox -> setStreamerPageInfo <| {streamerPageInfo | chatBox = newChatBox}
-       StreamerPageModRoomMsg chatRoomMsg -> updateChatRoom ModChat model chatRoomMsg
+       StreamerPageModRoomMsg chatRoomMsg -> updateChatRoom model chatRoomMsg
          streamerPageInfo.modRoom (StreamerPageMsg << StreamerPageModRoomMsg)
          <| \newChatRoom -> setStreamerPageInfo {streamerPageInfo | modRoom = newChatRoom}
-       StreamerPageMentionMessageRoomMsg elmBarMsg -> updateElmBar updateMessageRoom model
-         elmBarMsg streamerPageInfo.atMessageRoom
+       StreamerPageMentionMessageRoomMsg messageRoomMsg -> updateMessageRoom model
+         messageRoomMsg streamerPageInfo.atMessageRoom
          (StreamerPageMsg << StreamerPageMentionMessageRoomMsg)
          <| \newMessageRoom -> setStreamerPageInfo {streamerPageInfo | atMessageRoom = newMessageRoom}
 
        OverStreamerPage f -> noCmd <| setStreamerPageInfo <| f streamerPageInfo
        StreamStatusSetter status -> noCmd <| setStreamerPageInfo {streamerPageInfo | streamStatus = status}
-       HostCheck strCheck -> pair model <| cmdMsg <|
-         ApiPOST [] "mod" "host_check"
-           [pair "name" <| JE.string strCheck]
-           (flip JD.map (JD.field "check_result" JD.int) <| \int ->
+       HostCheck strCheck -> pair model <|
+         apiPOSTDefault "mod" "host_check"
+           [pair "name" <| JE.string strCheck] <|
+           flip JD.map (JD.field "check_result" JD.int) <| \int ->
              StreamerPageMsg <| OverStreamerPage <| \info ->
                   if info.hostingSearch /= strCheck then info
-                     else  {info | hostingCheck = int})
-           <| defaultRequestResponse
+                     else  {info | hostingCheck = int}

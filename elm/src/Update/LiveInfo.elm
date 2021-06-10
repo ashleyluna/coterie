@@ -94,8 +94,8 @@ updateLiveInfo model msg next =
                       _ -> NoMsg
                    ]
              ])
-       ChangeStreamStatus newStatus -> pair model <| cmdMsg <|
-         ApiPOST [] "mod"
+       ChangeStreamStatus newStatus -> pair model <|
+         apiPOSTDefault "mod"
            (case newStatus of
              Just (Ok _) -> "change_title"
              Just (Err _) -> "host"
@@ -105,9 +105,8 @@ updateLiveInfo model msg next =
              Just (Ok str) -> [pair "title" <| JE.string str]
              Just (Err str) -> [pair "creator" <| JE.string str]
              Nothing -> []
-           )
-           (JD.succeed NoMsg)
-           <| defaultRequestResponse
+           ) <|
+           JD.succeed NoMsg
        UpdateLiveTime currentTime -> noCmd <| overStreamStatus <| \streamStatus ->
          case streamStatus of
            Just (Streaming info) -> Just <|

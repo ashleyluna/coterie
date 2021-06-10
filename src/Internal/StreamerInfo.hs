@@ -16,7 +16,7 @@ import Data.Text
 data StreamerInfo = StreamerInfo
   {rootUrl :: Text
   ,streamerName :: Text -- user account name, DB.User username
-  ,seasonEndTimes :: [Word] -- Epoch dates of season beginnings, in seconds
+  ,seasonEndTimes :: [Int] -- Epoch dates of season beginnings, in seconds
                             -- first date is the end of season 1 / beginning of season 2
   }
 

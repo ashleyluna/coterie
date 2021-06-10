@@ -66,14 +66,14 @@ messageBox model streamerPageInfo =
         [verticalLine model
         ,co [width <| px 500, height fill] <|
             [Element.map (StreamerPageMsg << StreamerPageModRoomMsg) <|
-             chatRoom model "streamerpage-modchat-" modChat streamerPageInfo.modRoom
+             chatRoom model ModChat "streamerpage-modchat-" modChat streamerPageInfo.modRoom
             ,horizontalLine model
             ,messageRoom model True (StreamerPageMsg << StreamerPageMentionMessageRoomMsg)
                         "streamerpage-mention-" atRoom streamerPageInfo.atMessageRoom]
         ,verticalLine model
         ,el [width <| px 500, height fill] <|
             Element.map (StreamerPageMsg << StreamerPageChatBoxMsg) <|
-            chatBox model "streamerpage-" mainChat streamerPageInfo.chatBox]
+            chatBox model MainChat "streamerpage-" mainChat streamerPageInfo.chatBox]
 
 
 
@@ -132,7 +132,3 @@ streamStatusSetter model streamerPageInfo streamStatus =
                 bubbleMain model "Change Status"
             ]
         ]
-
-
-verticalLine = el [height fill, padding 16] << dividerV
-horizontalLine = el [width fill, padding 16] << dividerH

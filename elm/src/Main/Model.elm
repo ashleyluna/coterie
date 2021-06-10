@@ -173,7 +173,8 @@ type alias ProfileSpecialRoleRecord =
 
 type alias ProfileChatterRoleRecord =
   {months : Int
-  ,subscription : Maybe SubscriptionRecord}
+  ,subscription : Maybe SubscriptionRecord
+  ,canPostLinks : Bool}
 
 type alias SubscriptionRecord =
   {tier : Int
@@ -322,6 +323,8 @@ type alias SubscriberRecord =
   ,months : Int} -- number of months subbed
 
 type ChatMessage = UserMessage UserMessageRecord
+                 | DelayedUserMessage UserMessageRecord -- for mods to see before anyone else
+                 | TempUserMessage TempUserMessageRecord -- for main user too see own messages during delay
                  | SystemMessage SystemMessageRecord
                  --| SubNotification {username : String
                  --                  ,tier : SubTier
@@ -335,6 +338,11 @@ type alias UserMessageRecord =
   {user : ChatUser
   ,time : Int -- in milli seconds
   --,messageType : Maybe SpecialMessage
+  ,message : ParsedMessage
+  }
+
+type alias TempUserMessageRecord =
+  {time : Int
   ,message : ParsedMessage
   }
 
@@ -361,6 +369,10 @@ type ParserdPiece = PText String
                  -- | PStrike (List Message) -- __...__
                  -- | PColored (List Message)  -- |...|
 
+type alias RenderOptions =
+  {subOnlyEmotes : Bool
+  ,links : Bool
+  }
 
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -447,12 +459,12 @@ type alias ChatPageInfo =
   {chatBox : ChatBox}
 
 type alias ChatStreamPageInfo =
-  {messageRoom : ElmBar MessageRoom}
+  {messageRoom : MessageRoom}
 
 type alias StreamerPageInfo =
   {chatBox : ChatBox
   ,modRoom : ChatRoom
-  ,atMessageRoom : ElmBar MessageRoom
+  ,atMessageRoom : MessageRoom
   ,streamStatus : Maybe Bool -- Nothing == Offline, Just False == Hosting, Just True == Streaming
   ,streamingTitle : String
   ,hostingSearch : String
@@ -470,7 +482,7 @@ type alias StreamerPageInfo =
 
 type alias ChatBox =
   {chatRoom : ChatRoom
-  ,elmBar : ElmBar ()
+  ,elmBar : ElmBar
   ,chatBoxOverlay : ChatBoxOverlay
   --,chatBoxOverlayHistory : Maybe ChatBoxOverlay
   ,initiateChatBoxOverlayHeaderSliding : Bool
@@ -509,21 +521,53 @@ type alias RegisterRecord =
     -- ^ 0 = Good, 1 = Must Be AlphaNum,
 
 type alias ChatRoom =
-  {messageRoom : ElmBar MessageRoom
+  {messageRoom : MessageRoom
   ,chatRoomOverlay : ChatRoomOverlay
   ,mentionBox : Maybe Int
-  ,inputFocused : Bool
   ,input : String}
 
 type ChatRoomOverlay = NoChatRoomOverlay
                      | EmoteOverlay
 
 type alias MessageRoom =
-  {highlightedUsers : List String
-  ,hoverUsername : Bool}
+  {hoverUsername : Bool
+  ,highlightBox : HighlightBox
+  ,elmBar : ElmBar}
 
-type alias HighlightedUsers = List String
+type alias HighlightBox = Dict String (Maybe UserInfo)
 
+type alias UserInfo =
+  {username : String
+  --,role : Role
+  ,pronouns : String
+  ,numMonthsSubbed : Int
+  ,season : Int
+  ,modInfo : Maybe UserModInfo
+  }
+
+type alias UserModInfo =
+  {accountCreation : Int
+  ,numMessages : Int
+  ,modActions : List ModAction
+  --,messges : List ParsedMessage
+  }
+
+type ModAction = Ban BanRecord
+               | Censor CensorRecord
+               | ModComment ModCommentRecord
+
+type alias BanRecord =
+  {modName : String
+  ,timestamp : Int}
+
+type alias CensorRecord =
+  {modName : String
+  ,timestamp : Int}
+
+type alias ModCommentRecord =
+  {modName : String
+  ,timestamp : Int
+  ,message : ParsedMessage}
 
 
 --------------------------------------------------------------------------------
@@ -558,11 +602,10 @@ type alias HighlightedUsers = List String
 --------------------------------------------------------------------------------
 
 
-type alias ElmBar a =
+type alias ElmBar =
   {viewport : Maybe Viewport
   ,infiniteScroll : Maybe
      {direction : Bool
      ,stack : Int}
   ,autoScroll : Maybe Bool
-  ,content : a
   }

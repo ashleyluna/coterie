@@ -29,11 +29,9 @@ import Import
 import qualified Model as DB
 
 import Internal.Api
-import Internal.LiveInfo
-import Internal.Payment
 import Internal.StreamerInfo
 import Internal.User
-import Internal.WSRR
+import Internal.WS
 
 
 getMyProfileR :: Handler Value
@@ -57,6 +55,7 @@ getMyProfileR = apiIfLoggedIn $ \User {..} -> do
       return $ object
         ["months" .= _months
         ,"subscription" .= maybeSubscription
+        ,"can_post_links" .= (isRight _role || isSafeUser _moderation)
         ]
   jsonResponse "get_profile"
     ["account" .= object

@@ -39,6 +39,13 @@ intmap f as =
 pair a b = (a,b)
 dup a = (a,a)
 
+isLeft e = case e of
+  Left _ -> True
+  _ -> False
+isRight e = case e of
+  Right _ -> True
+  _ -> False
+
 showText :: Show a => a -> Text
 showText = Text.pack . show
 
@@ -58,10 +65,10 @@ mkQuery :: a -> b -> (a, Maybe b)
 mkQuery a b = (a, Just b)
 
 -- in micro seconds
-currentTime :: MonadIO m => m Word
+currentTime :: MonadIO m => m Int
 currentTime = round . (* 1000000) <$> liftIO POSIX.getPOSIXTime
 
-rfc3339ToPOSIXSeconds :: Text -> Maybe Word
+rfc3339ToPOSIXSeconds :: Text -> Maybe Int
 rfc3339ToPOSIXSeconds time = round <$> utcTimeToPOSIXSeconds <$> zonedTimeToUTC <$>
   parseTimeRFC3339 time
 
@@ -89,7 +96,7 @@ sessionTimeOut = 30 * 24 * 60 -- 30 days
 
 --printUrl = liftIO . putStrLn =<< getUrlRender <*> return HomeR
 
-assignSeason :: Word -> Word
+assignSeason :: Int -> Int
 assignSeason time = List.foldr
   (\seasonEndTime a -> if seasonEndTime > time then a else a + 1)
   1 (seasonEndTimes streamerInfo)

@@ -58,7 +58,7 @@ import Streamer
 -- automatically validated
 getTwitchUserFull :: MonadIO m => TwitchTokens
                                -> m (Maybe (TwitchAuthInfo, TwitchUser
-                                           ,Maybe Word, Maybe Word))
+                                           ,Maybe Int, Maybe Int))
 getTwitchUserFull tokens = validateToken tokens >>= \case
   TwitchRevoked -> do putStrLn "Plz Revoke" -- TODO Revoke
                       return Nothing
@@ -194,7 +194,7 @@ instance FromJSON TwitchUser where
                           <*> obj .: "profile_image_url"
 
 newtype TwitchFollowInfo = TwitchFollowInfo
-  {followedAt :: Word
+  {followedAt :: Int
   } deriving Show
 instance FromJSON TwitchFollowInfo where
   parseJSON = withObject "TwitchFollowInfo" $ \obj -> do
@@ -204,7 +204,7 @@ instance FromJSON TwitchFollowInfo where
       obj:_ -> fmap TwitchFollowInfo $ obj .: "followed_at" >>= rfc3339Json
 
 newtype TwitchSubInfo = TwitchSubInfo
-  {twitchSubTier :: Word
+  {twitchSubTier :: Int
   } deriving Show
 instance FromJSON TwitchSubInfo where
   parseJSON = withObject "TwitchSubInfo" $ \obj -> do

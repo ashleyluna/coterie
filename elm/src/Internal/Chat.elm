@@ -10,14 +10,22 @@ import Main.Model exposing (..)
 
 
 
-parseMessage : CommonInfo -> ChatUserList -> Bool -> String -> ParsedMessage
-parseMessage commonInfo users b str = ParsedMessage str <|
+parseMessage : CommonInfo -> ChatUserList -> RenderOptions -> String -> ParsedMessage
+parseMessage commonInfo users renderOptions str = ParsedMessage str <|
   let emoteList = Dict.keys commonInfo.staticInfo.globalEmoteList
-               ++ if b then [] else Dict.keys commonInfo.staticInfo.subOnlyEmoteList
+               ++ if renderOptions.subOnlyEmotes then [] else Dict.keys commonInfo.staticInfo.subOnlyEmoteList
       userList = Dict.keys <| flip Dict.union users.chatters <|
         List.foldl (flip Dict.union) Dict.empty <|
         List.concatMap Dict.values users.specialUsers
   in case runMessageParser emoteList userList str of
+       Ok parsedMessage -> parsedMessage
+       Err _ -> [PText str]
+
+parseMessage_ : CommonInfo -> String -> ParsedMessage
+parseMessage_ commonInfo str = ParsedMessage str <|
+  let emoteList = Dict.keys commonInfo.staticInfo.globalEmoteList
+               ++ Dict.keys commonInfo.staticInfo.subOnlyEmoteList
+  in case runMessageParser emoteList [] str of
        Ok parsedMessage -> parsedMessage
        Err _ -> [PText str]
 

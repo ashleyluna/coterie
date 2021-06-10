@@ -33,11 +33,11 @@ socketUpdates model msg next = case msg of
 socketMessageEncoder : SocketRequest -> Model -> Cmd Msg
 socketMessageEncoder req model =
   let send str vals = [pair "type" <| JE.string str] ++ vals
-      localeName locale = case locale of
-        MainChat -> [pair "type_chat" <| JE.string "main"]
-        ModChat -> [pair "type_chat" <| JE.string "mod"]
-        Whisper receiver -> [pair "type_chat" <| JE.string "whisper"
-                            ,pair "receiver" <| JE.string receiver]
+      --localeName locale = case locale of
+      --  MainChat -> [pair "type_chat" <| JE.string "main"]
+      --  ModChat -> [pair "type_chat" <| JE.string "mod"]
+      --  Whisper receiver -> [pair "type_chat" <| JE.string "whisper"
+      --                      ,pair "receiver" <| JE.string receiver]
   in sendOverSocket <| JE.encode 0 <| JE.object <| case req of
        GESubscription sub -> send "gesub" <|
          [pair "main_chat" <| JE.bool sub.mainChat
@@ -46,10 +46,10 @@ socketMessageEncoder req model =
          ]
        GetStreamStatus -> send "get_stream_status" []
        GetUsersInChat -> send "get_users_in_main_chat" []
-       UserMessageRequest locale str -> send "message" <|
-         [pair "message" <| JE.string <|
-           String.trim <| StringE.clean str
-         ] ++ localeName locale
+       --UserMessageRequest locale str -> send "message" <|
+       --  [pair "message" <| JE.string <|
+       --    String.trim <| StringE.clean str
+       --  ] ++ localeName locale
 
 
 
@@ -77,13 +77,19 @@ socketMessageDecoder model response = case response of
 
 
 socketChatMessageDecoder : CommonInfo -> ChatUserList -> String -> JD.Decoder ChatMsg
-socketChatMessageDecoder commonInfo users response = case response of
-  "add_user_message" -> JD.map (AddChatMessage << UserMessage) <|
-    JD.map3 (\user time str -> UserMessageRecord user time <|
-        parseMessage commonInfo users (user.role == Nothing) str)
-      (JD.field "user" jdUser)
-      (JD.field "time" JD.int)
-      (JD.field "message" JD.string)
+socketChatMessageDecoder commonInfo users response =
+  let jdUserMessage =
+        JD.map4 (\user time renderLinks -> UserMessageRecord user
+          (microToMillis time) <<
+          parseMessage commonInfo users
+            (RenderOptions (user.role == Nothing) renderLinks))
+        (JD.field "user" jdUser)
+        (JD.field "time" JD.int)
+        (JD.field "render_links" JD.bool)
+        (JD.field "message" JD.string)
+  in case response of
+  "add_user_message" -> JD.map (AddChatMessage << UserMessage) jdUserMessage
+  "add_delayed_user_message" -> JD.map AddDelatedUserMessage jdUserMessage
   "remove_user_message" -> JD.map2 RemoveUserMessage
     (JD.field "username" JD.string)
     (JD.field "message" JD.string)

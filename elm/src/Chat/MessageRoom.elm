@@ -35,12 +35,31 @@ import Streamer exposing (..)
 
 
 
-messageRoom : Model -> Bool -> (ElmBarMsg MessageRoomMsg -> msg) -> String -> Chat
-           -> ElmBar MessageRoom -> Element msg
-messageRoom model roomMode liftElmBarMsg containerName chat elmBar =
-  let viewport = elmBar.viewport
-  in elmUIVBar model liftElmBarMsg (containerName ++ "messageroom-") elmBar
-     <| La.lazy4 messageRoomHelper model.commonInfo roomMode chat elmBar.content
+messageRoom : Model -> Bool -> (MessageRoomMsg -> msg) -> String -> Chat
+           -> MessageRoom -> Element msg
+messageRoom model roomMode liftMessageRoomMsg containerName chat mRoom =
+  let a = 0
+  in Element.map liftMessageRoomMsg <|
+     co [width fill, height fill, scrollbars]
+        [highlightBox model mRoom.highlightBox
+        ,elmUIVBar model MessageRoomElmBarMsg
+           (containerName ++ "messageroom-") mRoom.elmBar <|
+           La.lazy4 messageRoomHelper model.commonInfo roomMode chat mRoom]
+
+highlightBox : Model -> HighlightBox -> Element MessageRoomMsg
+highlightBox model hBox =
+  let colorPalette = currentColorPalette model
+      modUserInfoBoxOn = hBox /= Dict.empty && profileIsMod model.commonInfo.profile
+  in co [width fill, height <| px <| if modUserInfoBoxOn then 300 else 0
+        ,paddingRight 16
+        ] <|
+        listIf modUserInfoBoxOn <|
+          [el [width fill, height fill, Bg.color <| rgb 0 0 0
+              ] <|
+               -- message list
+              Element.none
+          ,horizontalLine model
+          ]
 
 messageRoomHelper : CommonInfo -> Bool -> Chat -> MessageRoom -> Element MessageRoomMsg
 messageRoomHelper commonInfo roomMode chat mRoom =
@@ -57,35 +76,57 @@ messageRoomHelper commonInfo roomMode chat mRoom =
                 ,Bg.color <| if roomMode
                   then rgba255 0 0 0 0 else colorPalette.bgMain
                 ]
-               ++ if mRoom.highlightedUsers == [] || mRoom.hoverUsername then []
-                     else [Evt.onClick <| SetHighlightUsersList []]) <|
-               List.map (lazyChatMessage commonInfo roomMode chat.users mRoom.highlightedUsers)
+               ++
+               listIf (not <| mRoom.highlightBox == Dict.empty || mRoom.hoverUsername)
+                 [Evt.onClick NoHighlights]
+               ) <|
+               List.map (lazyChatMessage commonInfo roomMode chat.users mRoom.highlightBox)
                         chat.messages
 
-lazyChatMessage : CommonInfo -> Bool -> ChatUserList -> HighlightedUsers -> ChatMessage -> (String, Element MessageRoomMsg)
-lazyChatMessage commonInfo roomMode users highlightedUsers message = case message of
+lazyChatMessage : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> ChatMessage -> (String, Element MessageRoomMsg)
+lazyChatMessage commonInfo roomMode users hBox message = case message of
   RawMessage rawMessage -> pair (String.fromInt rawMessage.time) <|
-     rawMessageFormatter commonInfo roomMode users highlightedUsers rawMessage
+     rawMessageFormatter commonInfo roomMode users hBox rawMessage
   SystemMessage systemMessage -> pair (String.fromInt systemMessage.time) <|
-     systemMessageFormatter commonInfo roomMode users highlightedUsers systemMessage
+     systemMessageFormatter commonInfo roomMode users hBox systemMessage
   UserMessage usermessage -> pair (String.fromInt usermessage.time) <|
-     userMessageFormatter commonInfo roomMode users highlightedUsers usermessage
+     userMessageFormatter commonInfo roomMode users hBox usermessage
+  DelayedUserMessage usermessage -> pair (String.fromInt usermessage.time) <|
+     userMessageFormatter commonInfo roomMode users hBox usermessage
+  TempUserMessage usermessage -> pair (String.fromInt usermessage.time) <|
+     case commonInfo.profile of
+       Just profile ->
+         {- TODO
+         userMessageFormatter commonInfo roomMode users hBox <|
+           UserMessageRecord
+             (profileToChatUser profile)
+             usermessage.time
+             usermessage.message
+         -}
+         co []
+            [ex [] "temp: "
+            ,userMessageFormatter commonInfo roomMode users hBox <|
+              UserMessageRecord
+                (profileToChatUser profile)
+                usermessage.time
+                usermessage.message]
+       _ -> Element.none
 
 
 
-rawMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightedUsers -> RawMessageRecord -> Element MessageRoomMsg
-rawMessageFormatter commonInfo roomMode users highlightedUsers rawMessage =
-  chatMessageWrapper commonInfo highlightedUsers False
+rawMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> RawMessageRecord -> Element MessageRoomMsg
+rawMessageFormatter commonInfo roomMode users hBox rawMessage =
+  chatMessageWrapper commonInfo hBox False
   [tx rawMessage.message.unparsed]
 
-systemMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightedUsers -> SystemMessageRecord -> Element MessageRoomMsg
-systemMessageFormatter commonInfo roomMode users highlightedUsers systemMessage =
-  chatMessageWrapper commonInfo highlightedUsers False
+systemMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> SystemMessageRecord -> Element MessageRoomMsg
+systemMessageFormatter commonInfo roomMode users hBox systemMessage =
+  chatMessageWrapper commonInfo hBox False
   [tx systemMessage.message.unparsed]
 
-userMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightedUsers -> UserMessageRecord -> Element MessageRoomMsg
-userMessageFormatter commonInfo roomMode users highlightedUsers userMessage =
-  chatMessageWrapper commonInfo highlightedUsers (List.member userMessage.user.username highlightedUsers) <|
+userMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> UserMessageRecord -> Element MessageRoomMsg
+userMessageFormatter commonInfo roomMode users hBox userMessage =
+  chatMessageWrapper commonInfo hBox (List.member userMessage.user.username <| Dict.keys hBox) <|
   let colorPalette = currentColorPalette_ commonInfo.settings.themeMode
       settings = commonInfo.settings
       staticInfo = commonInfo.staticInfo
@@ -129,10 +170,10 @@ userMessageFormatter commonInfo roomMode users highlightedUsers userMessage =
 
 --------------------------------------------------------------------------------
 
-chatMessageWrapper : CommonInfo -> HighlightedUsers -> Bool -> List (Element MessageRoomMsg) -> Element MessageRoomMsg
-chatMessageWrapper commonInfo highlightedUsers otherAlphaRule = pg
+chatMessageWrapper : CommonInfo -> HighlightBox -> Bool -> List (Element MessageRoomMsg) -> Element MessageRoomMsg
+chatMessageWrapper commonInfo hBox otherAlphaRule = pg
   [width fill, height shrink, paddingXY 12 8, spacingXY 0 8
-  ,alpha <| if highlightedUsers == [] || otherAlphaRule then 1 else 0.3
+  ,alpha <| if hBox == Dict.empty || otherAlphaRule then 1 else 0.3
   ]
 
 chromaUsernameBubble commonInfo roomMode username nameColor =

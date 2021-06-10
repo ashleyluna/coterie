@@ -32,9 +32,8 @@ import UnliftIO.Async
 import Yesod.WebSockets
 
 
-import Internal.Images
-import Internal.LiveInfo
-import Internal.WSRR
+import Internal.Api
+import Internal.WS
 import Internal.User
 
 import Streamer
@@ -143,44 +142,6 @@ processWSRequest wsState@WSState {..} str = flip (maybe continue) (decode str) $
       sendValueDataR <=< jsonResponse "main_chat" $ -- send list users in main chat
         chatMessageJson $ SetUserList $ HashMap.fromList $
           fmap (pair =<< _username) $ HashMap.elems usersInChat
-    UserReq userReq -> case maybeLoggedIn of
-      Nothing -> continue
-      Just (tvCurrentUser, tqNotifications) -> do
-        currentUser@User {..} <- readTVarIO tvCurrentUser
-        case userReq of
-          MainChatMessageRequest message -> do
-            -- delay message for 2 seconds, if mods have not removed it, send to MainChat
-            timeStamp <- currentTime
-            let userMessage = UserMessage _userId timeStamp message False
-                addUserMessage = AddUserMessage currentUser userMessage
-                --delayMessage = do
-                --  atomically $ do
-                --    modifyTVar' tvMainChatDelayed $ IntMap.insert timeStamp userMessage
-                --    writeTQueue tqGlobalEvents $ ModEvent $ DelayedMainChat addUserMessage
-                --  threadDelay $ 2 * seconds
-                --  atomically $ do
-                --    --mainChatDelayed <- readTVar tvMainChatDelayed
-                --    when (IntMap.member (fromEnum timeStamp) mainChatDelayed) $ do
-                --      --modifyTVar' tvMainChatDelayed $ IntMap.delete (fromEnum timeStamp)
-                --      modifyTVar' tvMainChat $ IntMap.insert (fromEnum timeStamp) userMessage
-                --      writeTQueue tqGlobalEvents $ MainChat addUserMessage
-            atomically $ do
-              modifyTVar' tvMainChat $ IntMap.insert (fromEnum timeStamp) userMessage
-              writeTQueue tqGlobalEvents $ MainChat addUserMessage
-            continue
-          -- no need to moderate
-          ModChatMessageRequest message -> do
-            when (isMod _role) $ do
-              timeStamp <- currentTime
-              let userMessage = UserMessage _userId timeStamp message False
-                  addUserMessage = AddUserMessage currentUser userMessage
-              timeStamp <- currentTime
-              atomically $ writeTQueue tqGlobalEvents $ ModEvent $ ModChat addUserMessage
-            continue
-          -- WhisperMessageRequest
-          ModerationRequest modRequest -> if not $ isMod _role then continue else case modRequest of
-            UserInfo -> continue
-            ModAction _ -> continue
     _ -> continue
 
 
@@ -244,8 +205,8 @@ type WSException = WSHandler (Maybe SomeException)
 type WSHandler = WebSocketsT Handler
 
 data WSState = WSState
-  {myConnId :: Word
+  {myConnId :: Int
   ,tvGESub :: TVar GESub
   ,maybeLoggedIn :: Maybe (TVar User, TQueue Notification)
-  ,tvTimeSinceLastMessage :: TVar Word
+  ,tvTimeSinceLastMessage :: TVar Int
   }

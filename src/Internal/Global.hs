@@ -6,7 +6,7 @@ import qualified Data.HashMap.Strict as HashMap
 
 import Import
 
-import Internal.WSRR
+import Internal.WS
 
 globalEvents :: App -> IO ()
 globalEvents App {..} = void $ forkIO $ forever $ atomically $ do

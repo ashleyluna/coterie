@@ -21,10 +21,10 @@ import Internal.User
 --
 --getSub = runDB . getBy . DB.UniqueSubber
 
-randomDefaultColor :: Word -> Handler DefaultColor
+randomDefaultColor :: Int -> Handler DefaultColor
 randomDefaultColor uniqueNumber = do -- uniqueNumber usually will == userCreationTime
   rand <- fst . SyR.random . SyR.mkStdGen
-    . (+ fromEnum uniqueNumber) . fromEnum . Clock.utctDay
+    . (+ uniqueNumber) . fromEnum . Clock.utctDay
     <$> liftIO Clock.getCurrentTime
   return $ case mod (rand :: Int) 17 of
     int | int <= 0 -> Blue

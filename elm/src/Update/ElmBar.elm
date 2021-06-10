@@ -20,17 +20,18 @@ import Main.Ports exposing (..)
 
 
 
-updateElmBar_ : UpdateElement (ElmBarMsg msg) (ElmBar ())
-updateElmBar_ = updateElmBar <| \model innerMsg _ liftMsg emptyContentUpdate ->
-  (emptyContentUpdate (), cmdMsg <| liftMsg innerMsg)
+--updateElmBar_ : UpdateElement ElmBarMsg ElmBar
+--updateElmBar_ = updateElmBar <| \model innerMsg _ liftMsg emptyContentUpdate ->
+--  (emptyContentUpdate (), cmdMsg <| liftMsg innerMsg)
 
-updateElmBar : (UpdateElement msg a) -> UpdateElement (ElmBarMsg msg) (ElmBar a)
-updateElmBar innerUpdate model msg elmBar liftElmBarMsg setElmBar =
+--updateElmBar : (UpdateElement msg a) -> UpdateElement ElmBarMsg ElmBar
+updateElmBar : UpdateElement ElmBarMsg ElmBar
+updateElmBar model msg elmBar liftElmBarMsg setElmBar =
   let a = 1
   in case msg of
-       ElmBarMsg innerMsg -> innerUpdate model innerMsg elmBar.content
-         (liftElmBarMsg << ElmBarMsg)
-         <| \newContent -> setElmBar {elmBar | content = newContent}
+       --ElmBarMsg innerMsg -> innerUpdate model innerMsg elmBar.content
+       --  (liftElmBarMsg << ElmBarMsg)
+       --  <| \newContent -> setElmBar {elmBar | content = newContent}
        BatchElmBarMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftElmBarMsg) msgs
        GetElmBarViewport str next -> pair model <|
          flip Task.attempt (Dom.getViewportOf str) <|

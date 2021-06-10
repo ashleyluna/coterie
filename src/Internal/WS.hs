@@ -35,8 +35,6 @@ import Yesod.WebSockets
 import Import.NoFoundation
 import Streamer
 
-import Internal.Images
-import Internal.Payment
 import Internal.User
 
 
@@ -106,15 +104,22 @@ instance ToJSON StreamStatus where
 
 
 data ModEvent
-  = DelayedMainChat ChatMessage
+  = AddDelayedUserMessage
+      {user_ :: User
+      ,userMessage_ :: UserMessage}
   | ModChat ChatMessage
 
 
 instance ToJSON ModEvent where
   toJSON modEvent = case modEvent of
-    DelayedMainChat chatMessage -> object $
-      ["type" .= ("delayed_main_chat" :: Text)]
-      ++ chatMessageJson chatMessage
+    AddDelayedUserMessage user userMessage -> object $
+      ["type" .= ("main_chat" :: Text)
+      ,"type_chat" .= ("add_delayed_user_message" :: Text)
+      ,"user" .= simpleUserJSON user
+      ,"time" .= _timestamp userMessage
+      ,"render_links" .= ((isRight $ _role user) || isSafeUser (_moderation user))
+      ,"message" .= _message userMessage
+      ]
     ModChat chatMessage -> object $
       ["type" .= ("mod_chat" :: Text)]
       ++ chatMessageJson chatMessage
@@ -139,12 +144,13 @@ data ChatMessage
       {userList :: HashMap Text User}
 
 
-
-chatMessageJson chat = case chat of
+chatMessageJson :: ChatMessage -> [(Text,Value)]
+chatMessageJson chatMessage = case chatMessage of
     AddUserMessage {..} ->
       ["type_chat" .= ("add_user_message" :: Text)
       ,"user" .= simpleUserJSON user
       ,"time" .= _timestamp userMessage
+      ,"render_links" .= ((isRight $ _role user) || _numMessages (_moderation user) >= 1000)
       ,"message" .= _message userMessage
       ]
     RemoveUserMessage {..} ->
@@ -194,26 +200,26 @@ data WSRequest
   = GESubscription GESub
   | GetStreamStatus
   | GetUsersInChat
-  | UserReq UserRequest -- requets that require log in
-
-data UserRequest
-  = MainChatMessageRequest
-      {message :: Text}
-  | ModChatMessageRequest
-      {message :: Text}
-  | WhisperMessageRequest
-      {receiver :: Text
-      ,message :: Text}
-  | ModerationRequest ModerationRequest -- must be mod
-
-data ModerationRequest
-  = UserInfo
-  | ModAction ModAction
-
-
-data ModAction
-  = Censor Text Word -- username time length
-  | Ban Text -- username
+--  | UserReq UserRequest -- requests that require log in
+--
+--data UserRequest
+--  = MainChatMessageRequest
+--      {message :: Text}
+--  | ModChatMessageRequest
+--      {message :: Text}
+--  | WhisperMessageRequest
+--      {receiver :: Text
+--      ,message :: Text}
+--  | ModerationRequest ModerationRequest -- must be mod
+--
+--data ModerationRequest
+--  = UserInfo
+--  | ModAction ModAction
+--
+--
+--data ModAction
+--  = Censor Text Word -- username time length
+--  | Ban Text -- username
 
 
 
@@ -225,12 +231,12 @@ instance FromJSON WSRequest where
             <*> obj .: "mod"
     "get_stream_status" -> return GetStreamStatus
     "get_users_in_main_chat" -> return GetUsersInChat
-    "message" -> fmap UserReq $ obj .: "type_chat" >>= \case
-      "main" -> MainChatMessageRequest <$> obj .: "message"
-      "mod" -> ModChatMessageRequest <$> obj .: "message"
-      "whisper" -> WhisperMessageRequest <$> obj .: "receiver"
-                                         <*> obj .: "message"
-      str -> fail $ "Do Not Recognize Chat Type Request Type: " ++ str
+    --"message" -> fmap UserReq $ obj .: "type_chat" >>= \case
+    --  "main" -> MainChatMessageRequest <$> obj .: "message"
+    --  "mod" -> ModChatMessageRequest <$> obj .: "message"
+    --  "whisper" -> WhisperMessageRequest <$> obj .: "receiver"
+    --                                     <*> obj .: "message"
+    --  str -> fail $ "Do Not Recognize Chat Type Request Type: " ++ str
     str -> fail $ "Do Not Recognize WS Request Type: " ++ str
 
 

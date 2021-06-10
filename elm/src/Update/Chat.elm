@@ -4,6 +4,7 @@ import Dict exposing (Dict)
 import Dict.Extra as DictE
 import Json.Decode as JD
 import Json.Encode as JE
+import List.Extra as ListE exposing (..)
 import Time exposing (Posix, Zone)
 
 import Internal.Chat exposing (..)
@@ -34,16 +35,34 @@ import Main.Ports exposing (..)
 
 updateChat : UpdateElement ChatMsg Chat
 updateChat model msg chat liftChatMsg setChat =
-  let a = 1 -- TODO remove if no let statements are needed
+  let appendMessage message = if List.length chat.messages < 200
+                        then chat.messages ++ [message]
+                        else List.drop 1 chat.messages ++ [message]
+
   in case msg of
        AddChatMessage message ->
-         (setChat <| {chat | messages = if List.length chat.messages < 200
-                               then chat.messages ++ [message]
-                               else List.drop 1 chat.messages ++ [message]}
-         ,cmdMsg <| BatchMsgs
-           [TriggerAutoScrollDown
-           --,
-           ])
+         (setChat <| {chat | messages = case Debug.log "AddChatMessage" message of
+           UserMessage userMessage ->
+             let isSameMessage message_ = case message_ of
+                   DelayedUserMessage delayedMessage ->
+                     userMessage.user.username == userMessage.user.username
+                     && userMessage.message.unparsed == delayedMessage.message.unparsed
+                   TempUserMessage tempUserMessage ->
+                     Just userMessage.user.username == Maybe.map .username model.commonInfo.profile
+                     && userMessage.message.unparsed == tempUserMessage.message.unparsed
+                   _ -> False
+             in case ListE.findIndex isSameMessage chat.messages of
+                  Just int -> ListE.setAt int (UserMessage userMessage) chat.messages
+                  _ -> appendMessage message
+           _ -> appendMessage message
+           }
+         ,cmdMsg TriggerAutoScrollDown)
+       AddDelatedUserMessage userMessage ->
+         (setChat <| {chat | messages = appendMessage <| DelayedUserMessage userMessage}
+         ,cmdMsg TriggerAutoScrollDown)
+       AddTempUserMessage message ->
+         (setChat <| {chat | messages = appendMessage <| TempUserMessage message}
+         ,cmdMsg TriggerAutoScrollDown)
        RemoveUserMessage username str -> noCmd <| setChat <|
          let removeMessage messages = case messages of -- slightly more efficient than filter
                message2 :: otherMessages -> case message2 of
@@ -93,7 +112,7 @@ updateChat model msg chat liftChatMsg setChat =
          UseNow <| \now -> liftChatMessage <| AddChatMessage <| SystemMessage
            {time = Time.posixToMillis now
            ,message = parseMessage model.commonInfo model.liveInfo.mainChat.users
-                                     True message}
+                                     renderAll message}
 
 
 --------------------------------------------------------------------------------

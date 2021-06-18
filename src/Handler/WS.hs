@@ -15,7 +15,7 @@ import Import
 
 import Control.Concurrent
 import Control.Lens hiding ((.=))
-import Control.Monad.Trans.Writer.Strict
+import Data.Functor.Compose
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.IntMap.Strict as IntMap
 --import Control.Concurrent.STM
@@ -67,13 +67,13 @@ ws = do
       writeTQueue tqGlobalEvents $ MainChat $ AddUser currentUser
       tqNotifications <- newTQueue
       userConns <- readTVar tvUserConns
-      (newUserConns, tvCurrentUser) <- runWriterT $ (\f -> HashMap.alterF f _userId userConns) $ WriterT. \case
+      (tvCurrentUser, newUserConns) <- getCompose $ (\f -> HashMap.alterF f _userId userConns) $ Compose . \case
         Just currentUserConns@(tvCurrentUser, multiconns) -> do
-          return $ flip pair tvCurrentUser $
-            Just $ over _2 (HashMap.insert myConnId tqNotifications) currentUserConns
+          return $ pair tvCurrentUser $
+            Just $ (tvCurrentUser, HashMap.insert myConnId tqNotifications multiconns)
         _ -> do
           tvCurrentUser <- newTVar currentUser
-          return $ flip pair tvCurrentUser $
+          return $ pair tvCurrentUser $
             Just (tvCurrentUser, HashMap.singleton myConnId tqNotifications)
       writeTVar tvUserConns newUserConns
       return (tvCurrentUser, tqNotifications)

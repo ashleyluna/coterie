@@ -121,10 +121,10 @@ postMyProfileR = do
         jsonResponse "check_pronouns"
           ["check_result" .= (checkResult :: Int)]
       SetPronouns newPronouns ->
-        if betweenLen 2 10 newPronouns
-           && Text.all (\c -> Char.isAlphaNum c || c == '/')
-                       newPronouns
-           && True -- TODO moderate language
+        if not $ betweenLen 2 10 newPronouns
+              && Text.all (\c -> Char.isAlphaNum c || c == '/')
+                          newPronouns
+              && True -- TODO moderate language
            then jsonError "Invalid Pronouns"
            else do
              modifyUserConns $ set pronouns $ Just newPronouns

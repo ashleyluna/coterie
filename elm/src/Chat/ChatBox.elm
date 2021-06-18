@@ -421,7 +421,7 @@ nameColorSelection model profile info =
            ,ro [centerX, padding 10, spacing 12, Bdr.rounded 40, Bdr.color colorPalette.txSoft
                ,Bg.color <| .bgMain <| currentColorPalette_ themeMode]
                [el [] <| chromaCircle 40 themeMode left
-               ,el [Ft.size 24] <| chromaUsername themeMode profile.username <|
+               ,el [Ft.size 24] <| mkChromaUsername themeMode profile.username <|
                 ChromaNameGradient {left = left, right = right, mode = info.mode}
                ,el [] <| chromaCircle 40 themeMode right]]
        ,ro [centerX, spacing 16] <|
@@ -444,7 +444,7 @@ nameColorSelection model profile info =
           ,ex [centerX, Ft.size 16, Ft.color colorPalette.txSoft3]
               "How Your Username Will Appear In Chat"
           ,el [centerX, Ft.size 28] <|
-              chromaUsername settings.themeMode profile.username <| profileNameColorAppearance profile]
+              mkChromaUsername settings.themeMode profile.username <| profileNameColorAppearance profile]
         ,co [centerX, spacing 24, paddingTop 16]
             [ex [centerX, Ft.size 18, Ft.color colorPalette.txSoft]
                 "Default Color"
@@ -507,8 +507,8 @@ communityOverlay chatBoxName info users model cBox =
         simpleDict .nameColor <| filterUsers users.chatters
       usernameStyle username nameColor = el
          [centerX] <|
-         chromaUsername model.commonInfo.settings.themeMode
-                        username nameColor
+         mkChromaUsername model.commonInfo.settings.themeMode
+                          username nameColor
       roleGroupStyle roleName userList = co
         [width fill, spacing 20, Ft.color colorPalette.txSoft]
         [ex [centerX, Ft.size 20, Ft.bold, Ft.color colorPalette.txSoft]
@@ -610,7 +610,7 @@ registerOverlay info model cBox =
                     "usernameInput"
               ,elIf (info.invalidUsername >= 2) <|
                     fieldErrorText model <| case info.invalidUsername of
-                      2 -> "Character length must be 3-24. Characters must be A-Z or 0-9" --TODO allow underscores
+                      2 -> "Character length must be 3-20. Characters must be A-Z or 0-9" --TODO allow underscores
                       3 -> "Usernames must not include profanity"
                       _ -> "This username is already in use"
               ]

@@ -500,6 +500,7 @@ type ChatBoxOverlay = NoChatBoxOverlay
 
 type alias CommunityOverlayRecord =
   {userSearch : String}
+
 type alias WhispersOverlayRecord =
   {userSearch : String}
 
@@ -531,23 +532,32 @@ type ChatRoomOverlay = NoChatRoomOverlay
 
 type alias MessageRoom =
   {hoverUsername : Bool
-  ,highlightBox : HighlightBox
+  ,highlightBox : List HighlightedUser
+  ,selectedUser : Int
+  ,userBarMargin : Float
   ,elmBar : ElmBar}
 
-type alias HighlightBox = Dict String (Maybe UserInfo)
+type alias HighlightBox = List HighlightedUser
 
-type alias UserInfo =
+type alias HighlightedUser =
   {username : String
-  --,role : Role
-  ,pronouns : String
-  ,numMonthsSubbed : Int
-  ,season : Int
-  ,modInfo : Maybe UserModInfo
+  ,userInfo : Maybe HighlightedUserInfo
   }
 
-type alias UserModInfo =
-  {accountCreation : Int
-  ,numMessages : Int
+type alias HighlightedUserInfo =
+  {role : Maybe Role
+  ,badges : List String
+  ,pronouns : Maybe String
+  ,nameColor : NameColor
+  ,accountCreation : Int
+  ,power : Int
+  ,season : Int
+  --,modInfo : Maybe HighlightedUserModInfo
+  }
+
+
+type alias HighlightedUserModInfo =
+  {numMessages : Int
   ,modActions : List ModAction
   --,messges : List ParsedMessage
   }

@@ -74,8 +74,8 @@ chatRoom model chatLocale containerName chat cRoom =
                             then colorPalette.bgMain2
                             else colorPalette.bgMain
                           ,Evt.onClick <| AddMention username] <|
-                          chromaUsername model.commonInfo.settings.themeMode
-                                         username nameColor])
+                          mkChromaUsername model.commonInfo.settings.themeMode
+                                           username nameColor])
             [In.multiline [width fill, height (maximum 95 shrink)
                           ,Ft.color colorPalette.txMain
                           ,Bdr.width 2, Bdr.rounded 8, Bdr.color colorPalette.bgMain3

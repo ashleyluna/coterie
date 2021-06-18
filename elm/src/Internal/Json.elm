@@ -158,7 +158,7 @@ jeChromaColor chromaColor = JE.object <|
   ]
 
 -- Role
-jdRole = JD.oneOf
+jdSimpleRole = JD.oneOf
   [JD.field "special" <| JD.map Special JD.string
   ,jdSubscriber]
 

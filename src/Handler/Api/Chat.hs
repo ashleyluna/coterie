@@ -59,10 +59,31 @@ postChatR = apiIfLoggedIn $ \currentUser@User {..} -> do
         atomically $ writeTQueue tqGlobalEvents $ ModEvent $ ModChat addUserMessage
       jsonResponse "message" []
     -- WhisperMessageRequest
-    _ -> jsonResponse "TODO" []
-    --UserInfo -> jsonResponse "chat_message" []
     --ModerationRequest modRequest -> if not $ isMod _role then continue else case modRequest of
     --  ModAction _ -> jsonResponse "chat_message" []
+    UserInfo username -> findUser username >>= \case
+      Nothing -> jsonError "User Not Found"
+      Just User {..} -> do
+        modInfo <- if not $ isMod _role then return []
+          else do
+            return ["num_messages" .= _numMessages _moderation
+                   ,"mod_actions" .= ([] :: [Int])
+                   ]
+        jsonResponse "get_user_info" $
+          ["role" .= simpleRoleJSON _role
+          ,"badges" .= toJSON
+               (toList (_firstBadge _badges)
+             ++ toList (_secondBadge _badges))
+          ,"pronouns" .= _pronouns
+          ,"name_color" .= nameColorJSON _role _nameColor
+          ,"account_creation" .= _userCreationTime _accountInfo
+          ,"power" .= case _role of
+            Right SpecialRole {..} -> _power
+            _ -> 0
+          ,"season" .= _season _accountInfo
+          ] ++ modInfo
+    _ -> jsonResponse "TODO" []
+
 
 
 
@@ -80,6 +101,7 @@ data ChatRequest
       {receiver :: Text
       ,message :: Text}
   | UserInfo
+      {usernameSearch :: Text}
   | ModerationRequest ModerationRequest -- must be mod
 
 data ModerationRequest
@@ -100,6 +122,7 @@ instance FromJSON ChatRequest where
       "whisper" -> WhisperMessageRequest <$> obj .: "receiver"
                                          <*> obj .: "message"
       str -> fail $ "Do Not Recognize Chat Type Request Type: " ++ str
+    "get_user_info" -> UserInfo <$> obj .: "username"
     str -> fail $ "Do Not Recognize Chat Request Type: " ++ str
 
 

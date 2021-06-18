@@ -106,7 +106,7 @@ socketChatMessageDecoder commonInfo users response =
 
 jdUser = JD.map5 ChatUser
   (JD.field "username" JD.string)
-  (JD.maybe <| JD.field "role" jdRole)
+  (JD.maybe <| JD.field "role" jdSimpleRole)
   (JD.field "badges" <| JD.list JD.string)
   (JD.maybe <| JD.field "pronouns" JD.string)
   (JD.field "name_color" jdNameColor_)

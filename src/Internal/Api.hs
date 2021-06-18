@@ -43,6 +43,9 @@ currentUser :: Handler (Maybe User)
 currentUser = do
   maybeAuth >$>= fromUserDB
 
+findUser :: Text -> Handler (Maybe User)
+findUser username = runDB (P.getBy $ DB.UniqueUsername username) >$>= fromUserDB
+
 fromUserDB :: Entity DB.User -> Handler User
 fromUserDB userEntity@(Entity userKey user@(DB.User {..})) = do
   App {..} <- getYesod

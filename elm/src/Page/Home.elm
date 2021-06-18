@@ -802,33 +802,8 @@ agreementMainBoxPage model homePageInfo back =
                     ]
                  ]
               ,elMaybe model.commonInfo.localInfo.zone <| \zone ->
-                 let agreementUpdate = 1613258147
-                     posix = Time.millisToPosix (1000 * agreementUpdate)
-                     chars2 n = if String.length n == 1
-                                   then "0" ++ n
-                                   else n
-                     time = (case Time.toMonth zone posix of
-                               Time.Jan -> "Jan"
-                               Time.Feb -> "Feb"
-                               Time.Mar -> "Mar"
-                               Time.Apr -> "Apr"
-                               Time.May -> "May"
-                               Time.Jun -> "Jun"
-                               Time.Jul -> "Jul"
-                               Time.Aug -> "Aug"
-                               Time.Sep -> "Sep"
-                               Time.Oct -> "Oct"
-                               Time.Nov -> "Nov"
-                               Time.Dec -> "Dec")
-                        ++ " "
-                        ++ String.fromInt (Time.toDay zone posix)
-                        ++ ", "
-                        ++ String.fromInt (Time.toYear zone posix)
-                        ++ ", "
-                        ++ chars2 (String.fromInt <| Time.toHour zone posix)
-                        ++ ":"
-                        ++ chars2 (String.fromInt <| Time.toMinute zone posix)
-                 in ex [centerX, alignBottom] <| "This agreement was last updated: " ++ time
+                 let agreementUpdate = 1613258147 * 1000000
+                 in ex [centerX, alignBottom] <| "This agreement was last updated: " ++ mkDate zone agreementUpdate
               ]
           ]
 

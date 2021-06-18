@@ -56,7 +56,7 @@ import Internal.User
 postRegCheckR :: Handler Value
 postRegCheckR = do
   CheckUsername requestedUsername <- (requireCheckJsonBody :: Handler CheckRequest)
-  checkResult <- if not $ betweenLen 3 24 requestedUsername
+  checkResult <- if not $ betweenLen 3 20 requestedUsername
                        && Text.all (\c -> Char.isAlphaNum c || c == '_')
                                    requestedUsername
                  then do delReqCookie

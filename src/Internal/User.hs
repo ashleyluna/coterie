@@ -52,6 +52,12 @@ isSafeUser moderation = _numMessages moderation >= 1000
 --------------------------------------------------------------------------------
 -- Roles
 
+{-
+Role uses Either to allow Chatter and SpecialRole to be distinguished types.
+If SpecialRole were the same type as Chatter, a Chatter value could accidently
+be added into tvSpecialRoles which is specifically a collction of SpecialRoles.
+-}
+
 type Role = Either Chatter SpecialRole
 
 data Chatter = Chatter
@@ -82,6 +88,14 @@ isAdmin_ :: SpecialRole -> Bool
 isAdmin_ role = case role of
   SpecialRole _ power | power == 2 -> True
   _ -> False
+
+simpleRoleJSON :: Role -> Value
+simpleRoleJSON (Right (SpecialRole roleName _)) = object
+  ["special" .= roleName]
+simpleRoleJSON (Left (Chatter 0 _)) = Null
+simpleRoleJSON (Left (Chatter months sub)) = object
+  ["months" .= months
+  ,"tier" .= maybe 0 _subTier sub]
 
 --------------------------------------------------------------------------------
 -- Badge Collection

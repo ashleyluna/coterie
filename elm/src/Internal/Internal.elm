@@ -84,6 +84,10 @@ apiPOSTDefault apiPath requestType body decoder =
       Err err -> httpErrorMsg err
       Ok resMsg -> resMsg
 
+msgResult r f = case r of
+  Ok a -> f a
+  Err _ -> NoMsg
+
 apiUrl url =
   (if url.protocol == Http then "http" else "https")
   ++ "://"
@@ -98,6 +102,24 @@ httpErrorMsg err = case err of
   Http.NetworkError -> LogMessage "NetworkError"
   Http.BadStatus int -> LogMessage <| "BadStatus: " ++ String.fromInt int
   Http.BadBody str -> LogMessage <| "BadBody: " ++ str
+
+
+
+
+
+viewportMarginUp viewport = viewport.viewport.y
+viewportMarginDown viewport = viewport.scene.height - (viewport.viewport.height + viewport.viewport.y)
+viewportMarginLeft viewport = viewport.viewport.x
+viewportMarginRight viewport = viewport.scene.width - (viewport.viewport.width + viewport.viewport.x)
+
+
+
+
+
+
+
+
+
 
 
 showChromaMode mode = case mode of
@@ -194,7 +216,9 @@ initialChatRoom =
 
 initialMessageRoom =
   {hoverUsername = False
-  ,highlightBox = Dict.empty
+  ,highlightBox = []
+  ,selectedUser = 0
+  ,userBarMargin = 0
   ,elmBar = {viewport = Nothing
             ,infiniteScroll = Nothing
             ,autoScroll = Just True}}

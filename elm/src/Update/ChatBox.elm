@@ -1,5 +1,6 @@
 module Update.ChatBox exposing (..)
 
+import Browser.Dom as Dom exposing (Viewport)
 import Char.Extra as CharE exposing (..)
 import Dict
 import Http
@@ -265,38 +266,79 @@ updateChatRoom model msg chatRoom liftChatRoomMsg setChatRoom =
 
 
 updateMessageRoom : UpdateElement MessageRoomMsg MessageRoom
-updateMessageRoom model msg messageRoom liftMessageRoomtMsg setMessageRoom =
+updateMessageRoom model msg messageRoom liftMessageRoomMsg setMessageRoom =
   let a = 1
   in case msg of
        MsgMessageRoomMsg msg_ -> pair model <| cmdMsg msg_
+       BatchMessageRoomMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftMessageRoomMsg) msgs
        MessageRoomElmBarMsg msg_ -> updateElmBar model msg_ messageRoom.elmBar
-         (liftMessageRoomtMsg << MessageRoomElmBarMsg)
+         (liftMessageRoomMsg << MessageRoomElmBarMsg)
          <| \newElmBar -> setMessageRoom {messageRoom | elmBar = newElmBar}
        NoHighlights -> noCmd <| setMessageRoom <|
-         {messageRoom | highlightBox = Dict.empty}
-       UpdateHighlightUsersList username -> if not <| Dict.member username messageRoom.highlightBox
-         then (setMessageRoom <|
-                {messageRoom | highlightBox = Dict.insert username Nothing messageRoom.highlightBox
-                }
-              ,apiPOSTDefault "mod" "get_user_info"
-                 [pair "username" <| JE.string username] <|
-                 JD.map (liftMessageRoomtMsg << AddUserInfo username) <| JD.map5 UserInfo
-                   (JD.succeed username)
-                   (JD.field "pronouns" JD.string)
-                   (JD.field "num_months_subbed" JD.int)
-                   (JD.field "season" JD.int)
-                   (JD.maybe <| JD.map3 UserModInfo
+         {messageRoom | highlightBox = [], userBarMargin = 0}
+       SetHighlightedUserFocus containerName int ->
+         (setMessageRoom <|
+           {messageRoom | selectedUser = int}
+         ,flip Task.attempt
+           (Task.map4 (\container wrapper el0 element -> SetUserBarMargin <|
+             max 0 <| min (wrapper.scene.width - container.viewport.width)
+                          (element.element.x - el0.element.x))
+             (Dom.getViewportOf <| containerName ++ "userbar-container")
+             (Dom.getViewportOf <| containerName ++ "userbar-wrapper")
+             (Dom.getElement <| containerName ++ String.fromInt 0)
+             (Dom.getElement <| containerName ++ String.fromInt (max 0 <| int - 1)))
+           <| \res -> case res of
+             Ok msg_ -> liftMessageRoomMsg msg_ --LogMessage <| "success: " ++ String.fromInt int ++ ", " ++ String.fromFloat x
+             Err (Dom.NotFound err) -> LogMessage <| "not found: " ++ err
+         )
+       SetUserBarMargin int -> noCmd <| setMessageRoom <|
+         {messageRoom | userBarMargin = int}
+       UpdateHighlightUsersList containerName username ->
+         case ListE.findIndex (\u -> u.username == username) messageRoom.highlightBox of
+           Just int ->
+             (setMessageRoom <|
+               let newBox = ListE.removeAt int messageRoom.highlightBox
+               in {messageRoom | highlightBox = newBox
+                               , userBarMargin = if List.length newBox == 0 then 0
+                                   else messageRoom.userBarMargin}
+             ,cmdMsg <| liftMessageRoomMsg <| SetHighlightedUserFocus containerName <|
+               max 0 <| messageRoom.selectedUser - 1)
+           _ -> (setMessageRoom <|
+                  {messageRoom | highlightBox = messageRoom.highlightBox
+                                             ++ [HighlightedUser username Nothing]
+                               , selectedUser = List.length messageRoom.highlightBox}
+                ,Cmd.batch
+                  [cmdMsg <| liftMessageRoomMsg <| SetHighlightedUserFocus containerName <|
+                    List.length messageRoom.highlightBox
+                  ,apiPOSTDefault "chat" "get_user_info"
+                   [pair "username" <| JE.string username] <|
+                   JD.map (liftMessageRoomMsg << AddHighlightedUserInfo username) <| JD.map7 HighlightedUserInfo
+                     (JD.field "role" <| JD.nullable jdSimpleRole)
+                     (JD.field "badges" <| JD.list JD.string)
+                     (JD.field "pronouns" <| JD.nullable JD.string)
+                     (JD.field "name_color" jdNameColor_)
                      (JD.field "account_creation" JD.int)
-                     (JD.field "num_messages" JD.int)
-                     (JD.field "mod_actions" <| JD.list <| jdModAction model.commonInfo)
-                   )
-              )
-         else noCmd <| setMessageRoom {messageRoom | highlightBox =
-                Dict.remove username messageRoom.highlightBox}
-       AddUserInfo username userInfo -> noCmd <| setMessageRoom <|
-         {messageRoom | highlightBox = flip Dict.map messageRoom.highlightBox <|
-           \huUsername oldUserInfo -> if huUsername /= username then oldUserInfo else Just userInfo
+                     (JD.field "power" JD.int)
+                     (JD.field "season" JD.int)
+                     --(JD.field "num_months_subbed" JD.int)
+                     --(JD.maybe <| JD.map3 UserModInfo
+                     --  (JD.field "account_creation" JD.int)
+                     --  (JD.field "num_messages" JD.int)
+                     --  (JD.field "mod_actions" <| JD.list <| jdModAction model.commonInfo)
+                     --)
+                  ]
+                )
+       AddHighlightedUserInfo username userInfo -> noCmd <| setMessageRoom <|
+         {messageRoom | highlightBox = flip List.map messageRoom.highlightBox <|
+           \user -> if user.username /= username then user else {user | userInfo = Just userInfo}
          }
+       -- POSTRequestUserMessages asks for mesasges sent to main chat.
+       -- Nothing = recent 50 messages. Just int = ask for 50 before the time of int
+       POSTRequestUserMessages username maybeTime -> pair model <|
+         apiPOSTDefault "mod" "user_messages"
+           [pair "username" <| JE.string username
+           ,pair "before" <| jeMaybe JE.int maybeTime] <|
+           (JD.succeed NoMsg)
        -- event listeners stack with containers having priority
        -- el [Evt.onCLick] <- prioity
        --    el [Evt.onCLick] <- ignored

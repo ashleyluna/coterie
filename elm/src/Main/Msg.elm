@@ -205,10 +205,15 @@ type ChatRoomMsg = MsgChatRoomMsg Msg
                  | SendUserMessage ChatLocale String Int
 
 type MessageRoomMsg = MsgMessageRoomMsg Msg
+                    | BatchMessageRoomMsgs (List MessageRoomMsg)
                     | MessageRoomElmBarMsg ElmBarMsg
                     | NoHighlights
-                    | UpdateHighlightUsersList String
-                    | AddUserInfo String UserInfo
+                    | SetHighlightedUserFocus String Int
+                   -- | GetUserBarViewport String (Viewport -> MessageRoomMsg)
+                    | SetUserBarMargin Float
+                    | UpdateHighlightUsersList String String
+                    | AddHighlightedUserInfo String HighlightedUserInfo
+                    | POSTRequestUserMessages String (Maybe Int)
                     --| Set
                     | SetHoverUsername Bool
                    -- auto scroll stuff
@@ -249,3 +254,6 @@ type ElmBarMsg = BatchElmBarMsgs (List ElmBarMsg)
                | AutoScrollDown Bool String Viewport
                | ElmBarWait ElmBarMsg
               -- | ElmBarMsg msg
+
+
+--type Viewport a = GetViewport String (String -> Viewport -> a)

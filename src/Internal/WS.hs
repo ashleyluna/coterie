@@ -258,12 +258,7 @@ simpleUserJSON (User {..}) = object
   ]
 
 
-simpleRoleJSON :: Role -> Value
-simpleRoleJSON (Right (SpecialRole roleName _)) = object ["special" .= roleName]
-simpleRoleJSON (Left (Chatter 0 _)) = Null
-simpleRoleJSON (Left (Chatter months sub)) = object
-  ["months" .= months
-  ,"tier" .= maybe 0 _subTier sub]
+
 
 
 nameColorJSON :: Role -> NameColor -> Value

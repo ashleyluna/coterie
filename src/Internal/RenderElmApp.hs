@@ -198,11 +198,11 @@ customElements.define("chroma-block", class extends HTMLElement {
   connectedCallback() {this.mkChromaBlock();}
   attributeChangedCallback() {this.mkChromaBlock();}
   static get observedAttributes()
-    {return ["hue","chroma","value"];}
+    {return ["hue","chroma","lcv-value"];}
   mkChromaBlock()
     {const hue = this.getAttribute("hue")
     ;const chr = this.getAttribute("chroma")
-    ;const value = this.getAttribute("value")
+    ;const value = this.getAttribute("lcv-value")
     ;this.style.backgroundColor = chroma.lch(mkColor(hue,chr,value))
     ;}
   })
@@ -213,12 +213,12 @@ customElements.define("chroma-name", class extends HTMLElement {
   connectedCallback() {this.mkChromaName();}
   attributeChangedCallback() {this.mkChromaName();}
   static get observedAttributes()
-    {return ["username","hue","chroma","value"];}
+    {return ["username","hue","chroma","lcv-value"];}
   mkChromaName()
     {const username = this.getAttribute("username")
     ;const hue = this.getAttribute("hue")
     ;const chr = this.getAttribute("chroma")
-    ;const value = this.getAttribute("value")
+    ;const value = this.getAttribute("lcv-value")
     ;this.innerHTML = `<span style="color: ${chroma.lch(mkColor(hue,chr,value))}">${username}</span>`
     ;}
   })

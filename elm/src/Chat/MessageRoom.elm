@@ -6,6 +6,7 @@ import Debug
 import Dict exposing (Dict)
 import Html
 import Html.Attributes as HtmlA
+import List.Extra as ListE
 import Maybe.Extra as MaybeE
 import Time exposing (Zone)
 
@@ -38,31 +39,120 @@ import Streamer exposing (..)
 messageRoom : Model -> Bool -> (MessageRoomMsg -> msg) -> String -> Chat
            -> MessageRoom -> Element msg
 messageRoom model roomMode liftMessageRoomMsg containerName chat mRoom =
-  let a = 0
+  let modUserInfoBoxOn = mRoom.highlightBox /= [] && profileIsMod model.commonInfo.profile
   in Element.map liftMessageRoomMsg <|
      co [width fill, height fill, scrollbars]
-        [highlightBox model mRoom.highlightBox
+        [co [width fill, height <| if modUserInfoBoxOn then shrink else px 0
+            ,paddingRight 16
+            ] <| listIf modUserInfoBoxOn <|
+                   highlightBox model (containerName ++ "messageroom-") mRoom
         ,elmUIVBar model MessageRoomElmBarMsg
            (containerName ++ "messageroom-") mRoom.elmBar <|
-           La.lazy4 messageRoomHelper model.commonInfo roomMode chat mRoom]
+           La.lazy5 messageRoomHelper model.commonInfo (containerName ++ "messageroom-") roomMode chat mRoom]
 
-highlightBox : Model -> HighlightBox -> Element MessageRoomMsg
-highlightBox model hBox =
+highlightBox : Model -> String -> MessageRoom -> List (Element MessageRoomMsg)
+highlightBox model containerName mRoom =
   let colorPalette = currentColorPalette model
-      modUserInfoBoxOn = hBox /= Dict.empty && profileIsMod model.commonInfo.profile
-  in co [width fill, height <| px <| if modUserInfoBoxOn then 300 else 0
-        ,paddingRight 16
-        ] <|
-        listIf modUserInfoBoxOn <|
-          [el [width fill, height fill, Bg.color <| rgb 0 0 0
-              ] <|
-               -- message list
-              Element.none
-          ,horizontalLine model
-          ]
+      hBox = mRoom.highlightBox
+      button off evt = faIcon
+        ([padding 6
+         ,Ft.size 24
+         ,Bdr.rounded 6]
+        ++ colorTransitionStyle
+        ++ if off
+              then [Ft.color colorPalette.txSoft3]
+              else [Ft.color colorPalette.txSoft
+                   ,mouseOver
+                     [Ft.color colorPalette.bgMain
+                     ,Bg.color colorPalette.mainHighlight]
+                   ,pointer, Evt.onClick evt]
+        )
+      setSelectedUser = SetHighlightedUserFocus containerName
+  in [co [width fill, height fill
+         ,Bg.color colorPalette.bgMain
+         ]
+         -- user bar
+         [ro [width fill, paddingBottom 8] --hBox.users-- name row
+             [button (mRoom.selectedUser == 0)
+                     (setSelectedUser (mRoom.selectedUser - 1))
+                     "fas fa-chevron-left"
+             ,el [width fill, paddingXY 4 0, clipX] <|
+              el [width fill, clipX
+                 ,htmlID <| containerName ++ "userbar-container"] <|
+                 ro [spacing 4, Ft.size 16, clipX
+                    ,htmlID <| containerName ++ "userbar-wrapper"
+                    ,htmlStyle "margin-left" <| String.fromFloat (negate mRoom.userBarMargin) ++ "px"
+                    ,htmlStyle "transition" "margin 0.75s ease-in-out"
+                    ,htmlStyle "-webkit-transition" "margin 0.75s ease-in-out"] <|
+                    flip List.indexedMap hBox <| \int user ->
+                      el [htmlID <| containerName ++ String.fromInt int] <|
+                         bubbleActiveMainFA model (int == mRoom.selectedUser) <|
+                           ex [paddingXY 8 4
+                              ,Evt.onClick <| setSelectedUser int
+                              ] <|
+                              user.username
+             ,button (mRoom.selectedUser == List.length hBox - 1)
+                     (setSelectedUser <| mRoom.selectedUser + 1)
+                     "fas fa-chevron-right"
+             ,el [paddingLeft 16] <|
+                 faIcon ([padding 6
+                         ,Ft.size 24
+                         ,Bdr.rounded 6
+                         ,pointer
+                         ,Evt.onClick NoHighlights]
+                        ++ colorTransitionStyle)
+                        "fas fa-times"
+             ]
+         -- user info
+         ,let maybeUserInfo = flip Maybe.andThen (ListE.getAt mRoom.selectedUser hBox) <|
+                \user -> flip Maybe.map user.userInfo <| \userInfo -> (user.username, userInfo)
+          in case maybeUserInfo of
+            Nothing -> em []
+            Just (username, userInfo) -> co
+              [paddingLeft 12, spacing 8, Ft.bold, Ft.size 16, Ft.color colorPalette.txSoft]
+              -- username, pronouns
+              [ro [spacing 8]
+                  [el [Ft.size 20] <|
+                      mkChromaUsername model.commonInfo.settings.themeMode
+                                       username userInfo.nameColor
+                  ,ex [alignBottom] <|
+                      Maybe.withDefault "" userInfo.pronouns]
+              ,co [paddingLeft 12, spacing 8] <|
+                  -- account creation
+                  [elMaybe model.commonInfo.localInfo.zone <| \zone -> ex [] <|
+                    "Account created on " ++ mkDate zone userInfo.accountCreation
+                  -- role badge, role info
+                  ,ro [spacing 8]
+                      [ex [] <|
+                          "Joined In Season " ++ String.fromInt userInfo.season
+                      ,case userInfo.role of
+                        Nothing -> Element.none
+                        Just role -> ro [] <|
+                          --"Season " ++ String.fromInt userInfo.season ++ ":" <|
+                          [el [height fill, paddingRight 8] <|
+                              em [width <| px 4, height fill, Bdr.rounded 4
+                                 ,Bg.color colorPalette.bgMain3]
+                          ,mkRoleBadge model.commonInfo.staticInfo 16 role
+                          ,ex [] <|
+                              case role of
+                                Subscriber sub -> "Tier " ++ String.fromInt sub.tier
+                                Special name -> name ++
+                                  case userInfo.power of
+                                    0 -> " (VIP)"
+                                    1 -> " (Moderator)"
+                                    _ -> " (Admin)"]
+                      ]
+                   -- users badges, role, etc
+                   -- mod actions
+                   -- messages
+                  ]
+              ]
+         ]
+     ,horizontalLine model
+     ]
 
-messageRoomHelper : CommonInfo -> Bool -> Chat -> MessageRoom -> Element MessageRoomMsg
-messageRoomHelper commonInfo roomMode chat mRoom =
+messageRoomHelper : CommonInfo -> String -> Bool -> Chat -> MessageRoom -> Element MessageRoomMsg
+messageRoomHelper commonInfo containerName roomMode chat mRoom =
   let colorPalette = currentColorPalette_ commonInfo.settings.themeMode
   in Ky.column ([width fill, height fill
                 ,Ft.family [Ft.typeface "Roboto"
@@ -77,22 +167,22 @@ messageRoomHelper commonInfo roomMode chat mRoom =
                   then rgba255 0 0 0 0 else colorPalette.bgMain
                 ]
                ++
-               listIf (not <| mRoom.highlightBox == Dict.empty || mRoom.hoverUsername)
+               listIf (not <| mRoom.highlightBox == [] || mRoom.hoverUsername)
                  [Evt.onClick NoHighlights]
                ) <|
-               List.map (lazyChatMessage commonInfo roomMode chat.users mRoom.highlightBox)
+               List.map (lazyChatMessage commonInfo containerName roomMode chat.users mRoom.highlightBox)
                         chat.messages
 
-lazyChatMessage : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> ChatMessage -> (String, Element MessageRoomMsg)
-lazyChatMessage commonInfo roomMode users hBox message = case message of
+lazyChatMessage : CommonInfo -> String -> Bool -> ChatUserList -> HighlightBox -> ChatMessage -> (String, Element MessageRoomMsg)
+lazyChatMessage commonInfo containerName roomMode users hBox message = case message of
   RawMessage rawMessage -> pair (String.fromInt rawMessage.time) <|
-     rawMessageFormatter commonInfo roomMode users hBox rawMessage
+     rawMessageFormatter commonInfo containerName roomMode users hBox rawMessage
   SystemMessage systemMessage -> pair (String.fromInt systemMessage.time) <|
-     systemMessageFormatter commonInfo roomMode users hBox systemMessage
+     systemMessageFormatter commonInfo containerName roomMode users hBox systemMessage
   UserMessage usermessage -> pair (String.fromInt usermessage.time) <|
-     userMessageFormatter commonInfo roomMode users hBox usermessage
+     userMessageFormatter commonInfo containerName roomMode users hBox usermessage
   DelayedUserMessage usermessage -> pair (String.fromInt usermessage.time) <|
-     userMessageFormatter commonInfo roomMode users hBox usermessage
+     userMessageFormatter commonInfo containerName roomMode users hBox usermessage
   TempUserMessage usermessage -> pair (String.fromInt usermessage.time) <|
      case commonInfo.profile of
        Just profile ->
@@ -105,7 +195,7 @@ lazyChatMessage commonInfo roomMode users hBox message = case message of
          -}
          co []
             [ex [] "temp: "
-            ,userMessageFormatter commonInfo roomMode users hBox <|
+            ,userMessageFormatter commonInfo containerName roomMode users hBox <|
               UserMessageRecord
                 (profileToChatUser profile)
                 usermessage.time
@@ -114,19 +204,19 @@ lazyChatMessage commonInfo roomMode users hBox message = case message of
 
 
 
-rawMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> RawMessageRecord -> Element MessageRoomMsg
-rawMessageFormatter commonInfo roomMode users hBox rawMessage =
+rawMessageFormatter : CommonInfo -> String -> Bool -> ChatUserList -> HighlightBox -> RawMessageRecord -> Element MessageRoomMsg
+rawMessageFormatter commonInfo containerName roomMode users hBox rawMessage =
   chatMessageWrapper commonInfo hBox False
   [tx rawMessage.message.unparsed]
 
-systemMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> SystemMessageRecord -> Element MessageRoomMsg
-systemMessageFormatter commonInfo roomMode users hBox systemMessage =
+systemMessageFormatter : CommonInfo -> String -> Bool -> ChatUserList -> HighlightBox -> SystemMessageRecord -> Element MessageRoomMsg
+systemMessageFormatter commonInfo containerName roomMode users hBox systemMessage =
   chatMessageWrapper commonInfo hBox False
   [tx systemMessage.message.unparsed]
 
-userMessageFormatter : CommonInfo -> Bool -> ChatUserList -> HighlightBox -> UserMessageRecord -> Element MessageRoomMsg
-userMessageFormatter commonInfo roomMode users hBox userMessage =
-  chatMessageWrapper commonInfo hBox (List.member userMessage.user.username <| Dict.keys hBox) <|
+userMessageFormatter : CommonInfo -> String -> Bool -> ChatUserList -> HighlightBox -> UserMessageRecord -> Element MessageRoomMsg
+userMessageFormatter commonInfo containerName roomMode users hBox userMessage =
+  chatMessageWrapper commonInfo hBox (List.member userMessage.user.username <| List.map .username hBox) <|
   let colorPalette = currentColorPalette_ commonInfo.settings.themeMode
       settings = commonInfo.settings
       staticInfo = commonInfo.staticInfo
@@ -136,23 +226,8 @@ userMessageFormatter commonInfo roomMode users hBox userMessage =
                 ,Ft.color colorPalette.txMain2] <|
                 mkTimeStamp commonInfo.localInfo.zone userMessage.time
         else Element.none
-      role = case userMessage.user.role of
-         Just (Special str) -> case Dict.get str staticInfo.specialRoleBadges of
-           Just emote -> emoteWithPadding settings.textSize emote
-           _ -> Element.none
-         Just (Subscriber sub) -> case Array.get (sub.tier - 1) staticInfo.subBadges of
-           Just badgeList ->
-             let subBadge = List.head <| Tuple.first <|
-                   List.partition ((<=) sub.months << .monthsRequired) badgeList
-             in case subBadge of
-                  Just badge -> emoteWithPadding settings.textSize badge.emote
-                  _ -> Element.none
-           _ -> Element.none
-         _ -> Element.none
-      specialBadges = flip List.map userMessage.user.badges <| \badgeName ->
-        case Dict.get badgeName staticInfo.specialRoleBadges of
-             Just emote -> emoteWithPadding settings.textSize emote
-             _ -> Element.none
+      role = MaybeE.unwrap Element.none (mkRoleBadge staticInfo settings.textSize) userMessage.user.role
+      specialBadges = List.map (mkSpecialBadge staticInfo settings.textSize) userMessage.user.badges
       pronouns = flip (MaybeE.unwrap Element.none) userMessage.user.pronouns <|
         ex [Ft.color colorPalette.txMain2]
   in [timeStamp]
@@ -160,8 +235,8 @@ userMessageFormatter commonInfo roomMode users hBox userMessage =
                ([role] ++ specialBadges)
      ++
      [pronouns
-     ,chromaUsernameBubble commonInfo roomMode userMessage.user.username userMessage.user.nameColor
-     ,formatMessage commonInfo roomMode userMessage.user.role userMessage.message <|
+     ,chromaUsernameBubble commonInfo containerName roomMode userMessage.user.username userMessage.user.nameColor
+     ,formatMessage commonInfo containerName roomMode userMessage.user.role userMessage.message <|
        flip Dict.union users.chatters <| List.foldl (flip Dict.union) Dict.empty <|
          List.concatMap Dict.values users.specialUsers
      ]
@@ -173,18 +248,18 @@ userMessageFormatter commonInfo roomMode users hBox userMessage =
 chatMessageWrapper : CommonInfo -> HighlightBox -> Bool -> List (Element MessageRoomMsg) -> Element MessageRoomMsg
 chatMessageWrapper commonInfo hBox otherAlphaRule = pg
   [width fill, height shrink, paddingXY 12 8, spacingXY 0 8
-  ,alpha <| if hBox == Dict.empty || otherAlphaRule then 1 else 0.3
+  ,alpha <| if hBox == [] || otherAlphaRule then 1 else 0.3
   ]
 
-chromaUsernameBubble commonInfo roomMode username nameColor =
+chromaUsernameBubble commonInfo containerName roomMode username nameColor =
   let paddingResize = paddingRight <| paddingAdjustment commonInfo.settings.textSize
-  in el (usernameStyle commonInfo roomMode username -- bubble
+  in el (usernameStyle commonInfo containerName roomMode username -- bubble
         ++ colorTransitionStyle) <|
-     chromaUsername commonInfo.settings.themeMode username nameColor
+     mkChromaUsername commonInfo.settings.themeMode username nameColor
 
 
-usernameStyle : CommonInfo -> Bool -> String -> List (Attribute MessageRoomMsg)
-usernameStyle commonInfo roomMode name =
+usernameStyle : CommonInfo -> String -> Bool -> String -> List (Attribute MessageRoomMsg)
+usernameStyle commonInfo containerName roomMode name =
   let colorPalette = currentColorPalette_ commonInfo.settings.themeMode
       textSize = commonInfo.settings.textSize
   in [Bg.color <| if roomMode
@@ -196,10 +271,27 @@ usernameStyle commonInfo roomMode name =
      ,mouseOver [Bg.color colorPalette.bgMain2]
      ,Evt.onMouseDown <| SetHoverUsername True
      ,Evt.onMouseUp <| SetHoverUsername False
-     ,Evt.onClick <| UpdateHighlightUsersList name]
+     ,Evt.onClick <| UpdateHighlightUsersList containerName name]
 
 
-formatMessage commonInfo roomMode role message users =
+mkRoleBadge staticInfo textSize role = case role of
+   Special name -> case Dict.get name staticInfo.specialRoleBadges of
+     Just emote -> emoteWithPadding textSize emote
+     _ -> Element.none
+   Subscriber sub -> case Array.get (sub.tier - 1) staticInfo.subBadges of
+       Just badgeList ->
+         let subBadge = List.head <| Tuple.first <|
+               List.partition ((<=) sub.months << .monthsRequired) badgeList
+         in case subBadge of
+              Just badge -> emoteWithPadding textSize badge.emote
+              _ -> Element.none
+       _ -> Element.none
+
+mkSpecialBadge staticInfo textSize badgeName = case Dict.get badgeName staticInfo.specialRoleBadges of
+       Just emote -> emoteWithPadding textSize emote
+       _ -> Element.none
+
+formatMessage commonInfo containerName roomMode role message users =
     let colorPalette = currentColorPalette_ commonInfo.settings.themeMode
         staticInfo = commonInfo.staticInfo
         userList = Dict.keys users
@@ -208,15 +300,15 @@ formatMessage commonInfo roomMode role message users =
                        else Dict.keys staticInfo.subOnlyEmoteList
      in el [spacingXY 0 8, Ft.color colorPalette.txMain] <|
         pg [] <|
-           List.map (parsedMessageFormatter commonInfo roomMode) message.parsed
+           List.map (parsedMessageFormatter commonInfo containerName roomMode) message.parsed
 
 
-parsedMessageFormatter : CommonInfo -> Bool -> ParserdPiece -> Element MessageRoomMsg
-parsedMessageFormatter commonInfo roomMode parsedMessage = case parsedMessage of
+parsedMessageFormatter : CommonInfo -> String -> Bool -> ParserdPiece -> Element MessageRoomMsg
+parsedMessageFormatter commonInfo containerName roomMode parsedMessage = case parsedMessage of
   PText str -> tx str
   PUserRef username str -> (flip ex str) <|
     []
-    ++ usernameStyle commonInfo roomMode username
+    ++ usernameStyle commonInfo containerName roomMode username
   PEmote str ->
     let emoteList = Dict.union commonInfo.staticInfo.globalEmoteList commonInfo.staticInfo.subOnlyEmoteList
     in case Dict.get str emoteList of

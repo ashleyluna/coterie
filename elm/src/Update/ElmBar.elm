@@ -41,8 +41,7 @@ updateElmBar model msg elmBar liftElmBarMsg setElmBar =
        SetElmBarViewPort viewport -> noCmd <| setElmBar {elmBar | viewport = Just viewport}
        OnScroll str viewport -> noCmd <| setElmBar <|
          let -- the distance between the bottom of the viewport and the bottom of the scene
-             bottomMargin = viewport.scene.height
-                          - (viewport.viewport.height + viewport.viewport.y)
+             bottomMargin = viewportMarginDown viewport
          in {elmBar | viewport = Just viewport
                     , infiniteScroll = flip Maybe.map elmBar.infiniteScroll <|
                         \infiniteScroll -> {infiniteScroll | stack =

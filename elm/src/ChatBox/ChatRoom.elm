@@ -1,4 +1,4 @@
-module Chat.ChatRoom exposing (..)
+module ChatBox.ChatRoom exposing (..)
 
 import Color
 import Dict
@@ -18,7 +18,7 @@ import Element.Events as Evt
 import Keyboard as Keyb exposing (..)
 import Keyboard.Events as KeyEvt exposing (..)
 
-import Chat.MessageRoom exposing (..)
+import ChatBox.MessageBox exposing (..)
 import Internal.Internal exposing (..)
 import Internal.Style exposing (..)
 import Main.Model exposing (..)
@@ -51,16 +51,17 @@ chatRoom model chatLocale containerName chat cRoom =
       userList = List.take 4 <| specialUsers ++ chatters
   in co [width fill, height fill, scrollbars]
         [el ([width fill, height fill, scrollbars]
-             ++
-             case cRoom.chatRoomOverlay of
-                EmoteOverlay -> List.singleton <| inFront <| emoteOverlay model cRoom
-                _ -> []
-            ) <| messageRoom model False MessageRoomMsg (containerName ++ "chatroom-") chat cRoom.messageRoom
+            ++ case cRoom.chatRoomOverlay of
+                 EmoteOverlay -> List.singleton <| inFront <| emoteOverlay model cRoom
+                 _ -> [] ) <|
+            Element.map (Msg << MessageBoxMsg) <|
+              messageBox model False (containerName ++ "chatroom-") chat cRoom.messageBox
         -- chat input
         ,ro ([width fill, alignBottom, centerX, paddingXY 12 6, spacing 8
              ,Ft.color colorPalette.txSoft, Ft.size model.commonInfo.settings.textSize
              ,Bg.color colorPalette.bgMain]
-            ++ listIf (cRoom.mentionBox /= Nothing) -- mention box
+            -- mention box
+            ++ listIf (cRoom.mentionBox /= Nothing)
                [above <|
                   el [width fill, paddingRight 16, clip] <|
                   co [width fill, alignBottom, padding 4
@@ -73,7 +74,7 @@ chatRoom model chatLocale containerName chat cRoom =
                           ,Bg.color <| if Just int == cRoom.mentionBox
                             then colorPalette.bgMain2
                             else colorPalette.bgMain
-                          ,Evt.onClick <| AddMention username] <|
+                          ,Evt.onClick <| Msg <| AddMention username] <|
                           mkChromaUsername model.commonInfo.settings.themeMode
                                            username nameColor])
             [In.multiline [width fill, height (maximum 95 shrink)
@@ -85,8 +86,8 @@ chatRoom model chatLocale containerName chat cRoom =
                           ,Element.htmlAttribute <| KeyEvt.customPerKey KeyEvt.Keydown <|
                             let arrowEvent arrow direction = pair arrow <| -- direction: True == Up, False == Down
                                   {message = case cRoom.mentionBox of
-                                    Nothing -> MsgChatRoomMsg NoMsg
-                                    Just position -> SetMentionBox <| Just <|
+                                    Nothing -> NoMsg
+                                    Just position -> Msg <| SetMentionBox <| Just <|
                                       if direction
                                          then max (position - 1) 0
                                          else min (position + 1) <| max (List.length userList - 1) 0
@@ -94,41 +95,41 @@ chatRoom model chatLocale containerName chat cRoom =
                             in [pair Keyb.Tab <|
                                  {message = case cRoom.mentionBox of
                                    Nothing -> case mentionChars of
-                                     "" -> MsgChatRoomMsg NoMsg
-                                     _ -> SetMentionBox <| Just 0
-                                   Just position -> BatchChatRoomMsgs
-                                     [SetMentionBox Nothing
+                                     "" -> NoMsg
+                                     _ -> Msg <| SetMentionBox <| Just 0
+                                   Just position -> BatchMsgs
+                                     [Msg <| SetMentionBox Nothing
                                      ,case ListE.getAt position userList of
-                                       Nothing -> MsgChatRoomMsg NoMsg
-                                       Just (str,_) -> AddMention str
+                                       Nothing -> NoMsg
+                                       Just (str,_) -> Msg <| AddMention str
                                      ]
                                  ,preventDefault = True, stopPropagation = False}
                                ,pair Keyb.Enter <|
                                  {message = if String.length cRoom.input >= 1 && String.length cRoom.input <= 500
-                                   then BatchChatRoomMsgs
-                                     [OverChatRoom <| \cRoom_ ->
+                                   then BatchMsgs
+                                     [Msg <| OverChatRoom <| \cRoom_ ->
                                        {cRoom_ | input = "", mentionBox = Nothing}
-                                     ,UserChatRoomMsgNow <| SendUserMessage chatLocale cRoom.input << Time.posixToMillis
+                                     ,UseNow <| Msg << SendUserMessage chatLocale cRoom.input << Time.posixToMillis
                                      ]
-                                   else MsgChatRoomMsg NoMsg -- TODO tell user to not send messages 500+ characters long
+                                   else NoMsg -- TODO tell user to not send messages 500+ characters long
                                  ,preventDefault = True, stopPropagation = False}
                                ,arrowEvent Keyb.ArrowUp True
                                ,arrowEvent Keyb.ArrowDown False
                                ]
                           ]
                           {onChange = \str -> if String.length str <= 500
-                            then OverChatRoom <| \cRoom_ ->
+                            then Msg <| OverChatRoom <| \cRoom_ ->
                                    {cRoom_ | input = str
                                            , mentionBox = if lastWord str == ""
                                                then Nothing else cRoom_.mentionBox}
-                            else MsgChatRoomMsg NoMsg
+                            else NoMsg
                           ,text = cRoom.input
                           ,placeholder = Just <| In.placeholder [] <| tx "Send a message"
                           ,label = In.labelHidden "Chat Input"
                           ,spellcheck = True}
              -- emote overlay button
             ,el ([centerY, pointer
-                 ,Evt.onClick <| SetChatRoomOverlay EmoteOverlay]) <|
+                 ,Evt.onClick <| Msg <| SetChatRoomOverlay EmoteOverlay]) <|
              bubbleActiveMainFA model (isChatRoomOverlayOn cRoom EmoteOverlay) <|
              faIcon [padding 6, Ft.size 24]
                     "fas fa-grin-alt"]
@@ -140,7 +141,7 @@ emoteOverlay : Model -> ChatRoom -> Element ChatRoomMsg
 emoteOverlay model cRoom =
   let colorPalette = currentColorPalette model
       mkEmoteButton gray emote = el
-        [Evt.onClick <| AddEmoteChatRoomInput emote.name
+        [Evt.onClick <| Msg <| AddEmoteChatRoomInput emote.name
         ,if gray then htmlStyle "filter" "grayscale(100%)" else pointer] <|
         mkEmote 24 emote
   in chatRoomOverlayWrapper model "Emotes" <|

@@ -19,7 +19,7 @@ import Main.Ports exposing (..)
 import Streamer exposing (..)
 
 
-updateCommonInfo : Update
+--updateCommonInfo : Update
 updateCommonInfo model msg next =
   let setCommonInfo info = {model | commonInfo = info}
       overCommonInfo f = {model | commonInfo = f model.commonInfo}
@@ -40,14 +40,14 @@ updateCommonInfo model msg next =
          <| cmdMsg <| LogMessage <| "new cookie " ++ str
 
        -- Main User
-       GETUserMe -> pair model <| cmdMsg <| ApiGET [] "profile" "get_profile"
-         (JD.map (SetProfile << Just) jdProfile) <|
+       GETUserMe -> pair model <| cmdMsg <| Msg <| ApiGET [] "profile" "get_profile"
+         (JD.map (Msg << SetProfile << Just) jdProfile) <|
          \response -> BatchMsgs
-           [SetUpProfile
+           [Msg <| SetUpProfile
            ,case response of
                Err err -> Debug.log "Error GETUserMe" <| httpErrorMsg err
                Ok resMsg -> Debug.log "Success GETUserMe" <| resMsg]
-       GETLogOut -> pair model <| cmdMsg <| ApiGET [] "profile/logout" "log_out"
+       GETLogOut -> pair model <| cmdMsg <| Msg <| ApiGET [] "profile/logout" "log_out"
          (JD.succeed <| MsgCmd Nav.reload) <|
          \response -> case response of
              Err err -> httpErrorMsg err
@@ -57,7 +57,7 @@ updateCommonInfo model msg next =
                (\code -> {code = code})
                (JD.field "code" JD.string)
          in pair model <| case JD.decodeValue decoder value of
-              Ok googleSignIn -> cmdMsg <| ApiPOST [] "register" "google_sign_in"
+              Ok googleSignIn -> cmdMsg <| Msg <| ApiPOST [] "register" "google_sign_in"
                 [pair "code" <| JE.string googleSignIn.code]
                 (JD.succeed NoMsg)
                 <| \response -> NoMsg
@@ -77,10 +77,10 @@ updateCommonInfo model msg next =
          }
        SetProfile profile -> (overCommonInfo <| \commonInfo ->
           {commonInfo | profile = profile}
-         ,cmdMsg SetUpProfile)
+         ,cmdMsg <| Msg SetUpProfile)
        OverProfile f -> (overCommonInfo <| \commonInfo ->
           {commonInfo | profile = Maybe.map f commonInfo.profile}
-         ,cmdMsg SetUpProfile)
+         ,cmdMsg <| Msg SetUpProfile)
        SetSettings settings -> (overCommonInfo <| \commonInfo ->
           {commonInfo | settings = settings}
          ,setSettingsStorage <| encodeMainUserSettings settings)
@@ -93,7 +93,7 @@ updateCommonInfo model msg next =
 
 
 commonInfoSetUp =
-  [cmdMsg GETUserMe
+  [cmdMsg <| Msg GETUserMe
   ]
 
 

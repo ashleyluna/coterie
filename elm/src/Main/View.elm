@@ -29,9 +29,9 @@ import Svg
 import Svg.Attributes as SvgA
 
 
-import Chat.ChatBox exposing (..)
-import Chat.ChatRoom exposing (..)
-import Chat.MessageRoom exposing (..)
+import ChatBox.ChatBox exposing (..)
+import ChatBox.ChatRoom exposing (..)
+import ChatBox.MessageBox exposing (..)
 import Internal.Internal exposing (..)
 import Internal.Style exposing (..)
 import Page.Home exposing (..)
@@ -63,7 +63,7 @@ chatPage model chatPageInfo =
       mainChat = model.liveInfo.mainChat
   in finishedLayout model <| el
      [width fill, height fill] <|
-     Element.map (ChatPageMsg << ChatPageChatBoxMsg) <|
+     Element.map (Msg << ChatPageMsg << ChatPageChatBoxMsg) <|
        chatBox model MainChat "chatpage-" mainChat chatPageInfo.chatBox
 
 
@@ -75,6 +75,5 @@ chatStreamPage model chatStreamInfo =
                                      , settings = streamerInfo.streamChatSettings}
   in finishedLayout model <| el
      [width fill, height fill] <|
-     --Element.map (ChatStreamPageMsg << ChatStreamPageMessageRoomMsg) <|
-       messageRoom model True (ChatStreamPageMsg << ChatStreamPageMessageRoomMsg)
-                   "chatstreampage-" mainChat chatStreamInfo.messageRoom
+     Element.map (Msg << ChatStreamPageMsg << ChatStreamPageMessageBoxMsg) <|
+       messageBox model True "chatstreampage-" mainChat chatStreamInfo.messageBox

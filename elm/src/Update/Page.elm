@@ -63,43 +63,43 @@ import Update.ElmBar exposing (..)
 
 
 
-updatePage : Update
+--updatePage : Update
 updatePage model msg next = case (msg, model.page) of
   (HomePageMsg homePageMsg, HomePage homePageInfo) ->
     updateHomePageInfo model homePageMsg homePageInfo
   (TriggerAutoScrollDown, HomePage homePageInfo) -> pair model <| cmdMsg <|
-    HomePageMsg <| HomeChatBoxMsg <| ChatBoxTriggerAutoScrollDown "homepage-"
+    Msg <| HomePageMsg <| HomeChatBoxMsg <| Msg <| ChatBoxTriggerAutoScrollDown "homepage-"
 
 
   (ChatPageMsg chatPageMsg, ChatPage chatPageInfo) ->
     updateChatPageInfo model chatPageMsg chatPageInfo
   (TriggerAutoScrollDown, ChatPage chatPageInfo) -> pair model <| cmdMsg <|
-    ChatPageMsg <| ChatPageChatBoxMsg <| ChatBoxTriggerAutoScrollDown "chatpage-"
+    Msg <| ChatPageMsg <| ChatPageChatBoxMsg <| Msg <| ChatBoxTriggerAutoScrollDown "chatpage-"
 
 
   (ChatStreamPageMsg chatStreamPageMsg, ChatStreamPage chatStreamPageInfo) ->
     updateChatStreamPageInfo model chatStreamPageMsg chatStreamPageInfo
   (TriggerAutoScrollDown, ChatStreamPage chatStreamPageInfo) -> pair model <| cmdMsg <|
-    ChatStreamPageMsg <| ChatStreamPageMessageRoomMsg <| MessageRoomElmBarMsg <|
-      GetElmBarViewport "chatstreampage-elmbar" <| AutoScrollDown False
+    Msg <| ChatStreamPageMsg <| ChatStreamPageMessageBoxMsg <| Msg <|
+      getViewportAndAutoScroll MessageBoxElmBarMsg "chatstreampage-elmbar"
 
 
   (StreamerPageMsg streamerPageMsg, StreamerPage streamerPageInfo) ->
     updateStreamerPageInfo model streamerPageMsg streamerPageInfo
   (TriggerAutoScrollDown, StreamerPage streamerPageInfo) -> pair model <| cmdMsg <|
     BatchMsgs
-      [StreamerPageMsg <| StreamerPageChatBoxMsg <| ChatBoxTriggerAutoScrollDown "streamerpage-"
-      ,StreamerPageMsg <| StreamerPageModRoomMsg <| MessageRoomMsg <| MessageRoomElmBarMsg <|
-        GetElmBarViewport "streamerpage-modchat-chatroom-messageroom-elmbar" (AutoScrollDown False)
-      ,StreamerPageMsg <| StreamerPageMentionMessageRoomMsg <| MessageRoomElmBarMsg <|
-        GetElmBarViewport "streamerpage-mention-messageroom-elmbar" <| AutoScrollDown False
+      [Msg <| StreamerPageMsg <| StreamerPageChatBoxMsg <| Msg <| ChatBoxTriggerAutoScrollDown "streamerpage-"
+      ,Msg <| StreamerPageMsg <| StreamerPageModRoomMsg <| Msg <| MessageBoxMsg <| Msg <|
+        getViewportAndAutoScroll MessageBoxElmBarMsg "streamerpage-modchat-chatroom-messageroom-elmbar"
+      ,Msg <| StreamerPageMsg <| StreamerPageMentionMessageBoxMsg <| Msg <|
+        getViewportAndAutoScroll MessageBoxElmBarMsg "streamerpage-mention-messageroom-elmbar"
       ]
 
   _ -> next
 
 
 
-updateHomePageInfo : UpdatePage HomePageMsg HomePageInfo
+--updateHomePageInfo : UpdatePage HomePageMsg HomePageInfo
 updateHomePageInfo model msg homePageInfo =
   let setHomePageInfo : HomePageInfo -> Model
       setHomePageInfo info = {model | page = case model.page of
@@ -109,20 +109,20 @@ updateHomePageInfo model msg homePageInfo =
        HomeTestMsg subPage -> noCmd <| setHomePageInfo
          {homePageInfo | subPage = if isSubPageOn homePageInfo.subPage subPage
             then subPage else homePageInfo.subPage}
-       HomeChatBoxMsg chatBoxMsg -> updateChatBox model chatBoxMsg homePageInfo.chatBox
-         (HomePageMsg << HomeChatBoxMsg) <|
-         \newChatBox -> setHomePageInfo <| {homePageInfo | chatBox = newChatBox}
+       HomeChatBoxMsg chatBoxMsg -> updateChatBox
+         homePageInfo.chatBox (\newChatBox -> setHomePageInfo <| {homePageInfo | chatBox = newChatBox})
+         model chatBoxMsg (Msg << HomePageMsg << HomeChatBoxMsg)
 
 
        SetStreamScreenSize bool -> case (homePageInfo.streamScreenSize, bool) of
          -- From Expand To Shrink
          (True, False) ->
            pair (setHomePageInfo {homePageInfo | streamScreenSize = False})
-             <| cmdMsg <| HomePageMsg <| InitiateSubPageSlide False
+             <| cmdMsg <| Msg <| HomePageMsg <| InitiateSubPageSlide False
          -- From Shrink To Expand
          (False, True) ->
            pair (setHomePageInfo {homePageInfo | streamScreenSize = True})
-             <| cmdMsg <| HomePageMsg <| SetSubPageDefault True
+             <| cmdMsg <| Msg <| HomePageMsg <| SetSubPageDefault True
          _ -> noCmd <| setHomePageInfo {homePageInfo | streamScreenSize = bool}
        UpdateSubPage subPage -> noCmd <| setHomePageInfo
          {homePageInfo | subPage = if isSubPageOn homePageInfo.subPage subPage
@@ -132,7 +132,7 @@ updateHomePageInfo model msg homePageInfo =
                        , subPage = subPage
                        , history = homePageInfo.subPage::homePageInfo.history
                        , unappendHistory = Nothing})
-         <| cmdMsg <| HomePageMsg <| InitiateSubPageSlide False
+         <| cmdMsg <| Msg <| HomePageMsg <| InitiateSubPageSlide False
        UnappendSubPage -> pair (setHomePageInfo <|
          case homePageInfo.history of
            subPage :: history ->
@@ -141,23 +141,23 @@ updateHomePageInfo model msg homePageInfo =
                            , unappendHistory = Just homePageInfo.subPage
                            }
            _ -> homePageInfo)
-         <| cmdMsg <| HomePageMsg <| InitiateSubPageSlide True
+         <| cmdMsg <| Msg <| HomePageMsg <| InitiateSubPageSlide True
        SetSubPageDefault direction -> pair (setHomePageInfo
          {homePageInfo | subPage = MainMainBoxPage
                        , unappendHistory = Just homePageInfo.subPage
                        , history = []})
-         <| cmdMsg <| HomePageMsg <| InitiateSubPageSlide direction
+         <| cmdMsg <| Msg <| HomePageMsg <| InitiateSubPageSlide direction
        InitiateSubPageSlide direction ->
          pair (setHomePageInfo {homePageInfo | initiateSubPageSliding = True
                                              , subPageSlideDirection = direction})
-           <| do <| waitAFrame <| Task.succeed <| HomePageMsg TurnOffSubPageSlide
+           <| do <| waitAFrame <| Task.succeed <| Msg <| HomePageMsg TurnOffSubPageSlide
        TurnOffSubPageSlide -> noCmd <| setHomePageInfo {homePageInfo | initiateSubPageSliding = False}
        SlideSubPageHeader bool direction subPage -> if bool
          then pair (setHomePageInfo {homePageInfo
                 | subPage = subPage
                 , initiateSubPageHeaderSliding = True
                 , subPageHeaderSlideDirection = direction})
-              <| do <| waitAFrame <| Task.succeed <| HomePageMsg
+              <| do <| waitAFrame <| Task.succeed <| Msg <| HomePageMsg
                     <| SlideSubPageHeader False direction subPage
          else noCmd <| setHomePageInfo
                 {homePageInfo | initiateSubPageHeaderSliding = False}
@@ -166,11 +166,10 @@ updateHomePageInfo model msg homePageInfo =
        -- NavBar
        CheckStreamTitleLength -> pair model
          <| flip Task.attempt (Browser.Dom.getElement "stream-title")
-            <| \resultElement ->
-                 case resultElement of
-                      Err _ -> HomePageMsg <| ChangeStreamTitleLength 0
-                      Ok element -> HomePageMsg <| ChangeStreamTitleLength
-                        element.element.width
+            <| \resultElement -> Msg <| case resultElement of
+                 Err _ -> HomePageMsg <| ChangeStreamTitleLength 0
+                 Ok element -> HomePageMsg <| ChangeStreamTitleLength
+                   element.element.width
 
 
 
@@ -186,13 +185,13 @@ updateHomePageInfo model msg homePageInfo =
        GiftFriendCheck strCheck -> pair model <|
          case homePageInfo.subPage of
            HomeSubPageSubscribe info -> if info.giftFriendSearch == strCheck
-             then do <| Task.succeed <| HomePageMsg <| POSTGiftFriendCheck strCheck
+             then do <| Task.succeed <| Msg <| HomePageMsg <| POSTGiftFriendCheck strCheck
              else Cmd.none
            _ -> Cmd.none
        POSTGiftFriendCheck strCheck -> pair model <|
          apiPOSTDefault "subscribe/check" "check_username"
            [pair "username" <| JE.string strCheck] <|
-           JD.map (HomePageMsg << UpdateGiftFriendCheck strCheck)
+           JD.map (Msg << HomePageMsg << UpdateGiftFriendCheck strCheck)
                    (JD.field "username" JD.int)
        {- this message could exist in POSTGiftFriendCheck, but if the response takes
           a long time, it could break the page by resetting the model -}
@@ -248,50 +247,48 @@ updateHomePageInfo model msg homePageInfo =
 
 
 
-updateChatPageInfo : UpdatePage ChatPageMsg ChatPageInfo
+--updateChatPageInfo : UpdatePage ChatPageMsg ChatPageInfo
 updateChatPageInfo model msg chatPageInfo =
   let setChatPageInfo info = {model | page = ChatPage info}
   in case msg of
-       ChatPageChatBoxMsg chatBoxMsg -> updateChatBox model chatBoxMsg chatPageInfo.chatBox
-         (ChatPageMsg << ChatPageChatBoxMsg) <|
-         \newChatBox -> setChatPageInfo <| {chatPageInfo | chatBox = newChatBox}
+       ChatPageChatBoxMsg chatBoxMsg -> updateChatBox
+         chatPageInfo.chatBox (\newChatBox -> setChatPageInfo <| {chatPageInfo | chatBox = newChatBox})
+         model chatBoxMsg (Msg << ChatPageMsg << ChatPageChatBoxMsg)
 
 
 
-updateChatStreamPageInfo : UpdatePage ChatStreamPageMsg ChatStreamPageInfo
+--updateChatStreamPageInfo : UpdatePage ChatStreamPageMsg ChatStreamPageInfo
 updateChatStreamPageInfo model msg chatStreamPageInfo =
   let setChatStreamPageInfo info = {model | page = ChatStreamPage info}
   in case msg of
-       ChatStreamPageMessageRoomMsg messageRoomMsg -> updateMessageRoom model
-         messageRoomMsg chatStreamPageInfo.messageRoom
-         (ChatStreamPageMsg << ChatStreamPageMessageRoomMsg)
-         <| \newMessageRoom -> setChatStreamPageInfo {chatStreamPageInfo | messageRoom = newMessageRoom}
-      -- ChatStreamPageMessageRoomMsg mRoomMsg -> updateMessageRoom model mRoomMsg chatStreamPageInfo.messageRoom
-      --   (ChatStreamPageMsg << ElmBarMsg << ChatStreamPageMessageRoomMsg) <|
-      --   \newMRoom -> setChatStreamPageInfo <| {chatStreamPageInfo | messageRoom = newMRoom}
+       ChatStreamPageMessageBoxMsg messageBoxMsg -> updateMessageBox
+         chatStreamPageInfo.messageBox (\newMessageBox -> setChatStreamPageInfo {chatStreamPageInfo | messageBox = newMessageBox})
+         model messageBoxMsg (Msg << ChatStreamPageMsg << ChatStreamPageMessageBoxMsg)
+      -- ChatStreamPageMessageBoxMsg mRoomMsg -> updateMessageBox model mRoomMsg chatStreamPageInfo.messageBox
+      --   (ChatStreamPageMsg << ElmBarMsg << ChatStreamPageMessageBoxMsg) <|
+      --   \newMRoom -> setChatStreamPageInfo <| {chatStreamPageInfo | messageBox = newMRoom}
 --
 
 
 
 
 
-updateStreamerPageInfo : UpdatePage StreamerPageMsg StreamerPageInfo
+--updateStreamerPageInfo : UpdatePage StreamerPageMsg StreamerPageInfo
 updateStreamerPageInfo model msg streamerPageInfo =
   let setStreamerPageInfo : StreamerPageInfo -> Model
       setStreamerPageInfo info = {model | page = case model.page of
         StreamerPage _ -> StreamerPage <| info
         anyOtherPage -> anyOtherPage}
   in case msg of
-       StreamerPageChatBoxMsg chatBoxMsg -> updateChatBox model chatBoxMsg streamerPageInfo.chatBox
-         (StreamerPageMsg << StreamerPageChatBoxMsg) <|
-         \newChatBox -> setStreamerPageInfo <| {streamerPageInfo | chatBox = newChatBox}
-       StreamerPageModRoomMsg chatRoomMsg -> updateChatRoom model chatRoomMsg
-         streamerPageInfo.modRoom (StreamerPageMsg << StreamerPageModRoomMsg)
-         <| \newChatRoom -> setStreamerPageInfo {streamerPageInfo | modRoom = newChatRoom}
-       StreamerPageMentionMessageRoomMsg messageRoomMsg -> updateMessageRoom model
-         messageRoomMsg streamerPageInfo.atMessageRoom
-         (StreamerPageMsg << StreamerPageMentionMessageRoomMsg)
-         <| \newMessageRoom -> setStreamerPageInfo {streamerPageInfo | atMessageRoom = newMessageRoom}
+       StreamerPageChatBoxMsg chatBoxMsg -> updateChatBox
+         streamerPageInfo.chatBox (\newChatBox -> setStreamerPageInfo <| {streamerPageInfo | chatBox = newChatBox})
+         model chatBoxMsg (Msg << StreamerPageMsg << StreamerPageChatBoxMsg)
+       StreamerPageModRoomMsg chatRoomMsg -> updateChatRoom
+         streamerPageInfo.modRoom (\newChatRoom -> setStreamerPageInfo {streamerPageInfo | modRoom = newChatRoom})
+         model chatRoomMsg (Msg << StreamerPageMsg << StreamerPageModRoomMsg)
+       StreamerPageMentionMessageBoxMsg messageBoxMsg -> updateMessageBox
+         streamerPageInfo.atMessageBox (\newMessageBox -> setStreamerPageInfo {streamerPageInfo | atMessageBox = newMessageBox})
+         model messageBoxMsg (Msg << StreamerPageMsg << StreamerPageMentionMessageBoxMsg)
 
        OverStreamerPage f -> noCmd <| setStreamerPageInfo <| f streamerPageInfo
        StreamStatusSetter status -> noCmd <| setStreamerPageInfo {streamerPageInfo | streamStatus = status}
@@ -299,6 +296,6 @@ updateStreamerPageInfo model msg streamerPageInfo =
          apiPOSTDefault "mod" "host_check"
            [pair "name" <| JE.string strCheck] <|
            flip JD.map (JD.field "check_result" JD.int) <| \int ->
-             StreamerPageMsg <| OverStreamerPage <| \info ->
+             Msg <| StreamerPageMsg <| OverStreamerPage <| \info ->
                   if info.hostingSearch /= strCheck then info
                      else  {info | hostingCheck = int}

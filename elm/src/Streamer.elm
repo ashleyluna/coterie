@@ -1,3 +1,8 @@
 module Streamer exposing (..)
 
-streamerInfo = _
+import Streamer.Serfs exposing (..)
+
+streamerInfo = serfsInfo
+
+mainMainBoxPage = serfsMainMainBoxPage
+supportMainBoxPage = serfsSupportMainBoxPage

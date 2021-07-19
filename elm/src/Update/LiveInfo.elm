@@ -60,7 +60,7 @@ import Streamer exposing (..)
 
 
 
-updateLiveInfo : Update
+--updateLiveInfo : Update
 updateLiveInfo model msg next =
   let setLiveInfo info = {model | liveInfo = info}
       overLiveInfo f = {model | liveInfo = f model.liveInfo}
@@ -73,8 +73,8 @@ updateLiveInfo model msg next =
                {newRecord | upTime = oldRecord.upTime}
              _ -> newStatus
           ,cmdMsg <| BatchMsgs
-             [HomePageMsg CheckStreamTitleLength
-             ,let sendSystemMessage = MainChatMsg << AddSystemMessage MainChatMsg
+             [Msg <| HomePageMsg CheckStreamTitleLength
+             ,let sendSystemMessage = Msg << MainChatMsg << AddSystemMessage (Msg << MainChatMsg)
               in case (newStatus, model.liveInfo.streamStatus) of
                  (Streaming _, Nothing) -> NoMsg
                  (Streaming _, Just (Streaming _)) -> NoMsg
@@ -89,7 +89,7 @@ updateLiveInfo model msg next =
                                         ++ "offline"
                    ,case model.page of
                       HomePage info -> if info.streamScreenSize
-                        then HomePageMsg <| SetStreamScreenSize False
+                        then Msg <| HomePageMsg <| SetStreamScreenSize False
                         else NoMsg
                       _ -> NoMsg
                    ]
@@ -116,9 +116,9 @@ updateLiveInfo model msg next =
 
 
        -- Main Chat
-       MainChatMsg chatMsg -> updateChat model chatMsg model.liveInfo.mainChat MainChatMsg
+       MainChatMsg chatMsg -> updateChat model chatMsg model.liveInfo.mainChat (Msg << MainChatMsg)
          <| \newChat -> overLiveInfo <| \liveInfo -> {liveInfo | mainChat = newChat}
-       ModChatMsg chatMsg -> updateChat model chatMsg model.liveInfo.modChat ModChatMsg
+       ModChatMsg chatMsg -> updateChat model chatMsg model.liveInfo.modChat (Msg << ModChatMsg)
          <| \newChat -> overLiveInfo <| \liveInfo -> {liveInfo | modChat = newChat}
        _ -> next
 
@@ -127,7 +127,7 @@ updateLiveInfo model msg next =
 
 
 liveInfoSetUp =
-  [do <| Task.map (\posix -> UpdateLiveTime <| Time.posixToMillis posix // 1000)
+  [do <| Task.map (\posix -> Msg <| UpdateLiveTime <| Time.posixToMillis posix // 1000)
                   Time.now
   --,cmdMsg <| liftStreamInfoMsg GETStreamStatus
   ]
@@ -138,7 +138,7 @@ liveInfoSetUp =
 liveInfoSubBatch model =
   [case model.liveInfo.streamStatus of
      Just (Streaming _) -> Time.every 1000 <| \posix ->
-       UpdateLiveTime <| Time.posixToMillis posix // 1000
+       Msg <| UpdateLiveTime <| Time.posixToMillis posix // 1000
      _-> Sub.none
   ]
 

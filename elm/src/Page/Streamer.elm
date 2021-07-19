@@ -23,9 +23,9 @@ import Element.Input as In
 import Element.Events as Evt
 import Element.Lazy as La
 
-import Chat.ChatBox exposing (..)
-import Chat.ChatRoom exposing (..)
-import Chat.MessageRoom exposing (..)
+import ChatBox.ChatBox exposing (..)
+import ChatBox.ChatRoom exposing (..)
+import ChatBox.MessageBox exposing (..)
 import Internal.Internal exposing (..)
 import Internal.Style exposing (..)
 import Main.Model exposing (..)
@@ -46,10 +46,10 @@ streamerPage model streamerPageInfo =
            streamStatusSetter model streamerPageInfo
          ,horizontalLine model
          ]
-     ,messageBox model streamerPageInfo]
+     ,messageBoxes model streamerPageInfo]
 
 
-messageBox model streamerPageInfo =
+messageBoxes model streamerPageInfo =
   let colorPalette = currentColorPalette model
       mainChat = model.liveInfo.mainChat
       modChat = model.liveInfo.modChat
@@ -65,15 +65,15 @@ messageBox model streamerPageInfo =
   in ro [height fill, Bg.color colorPalette.bgMain] <|
         [verticalLine model
         ,co [width <| px 500, height fill] <|
-            [Element.map (StreamerPageMsg << StreamerPageModRoomMsg) <|
+            [Element.map (Msg << StreamerPageMsg << StreamerPageModRoomMsg) <|
              chatRoom model ModChat "streamerpage-modchat-" modChat streamerPageInfo.modRoom
             ,horizontalLine model
-            ,messageRoom model True (StreamerPageMsg << StreamerPageMentionMessageRoomMsg)
-                        "streamerpage-mention-" atRoom streamerPageInfo.atMessageRoom]
+            ,Element.map (Msg << StreamerPageMsg << StreamerPageMentionMessageBoxMsg) <|
+              messageBox model True "streamerpage-mention-" atRoom streamerPageInfo.atMessageBox]
         ,verticalLine model
         ,el [width <| px 500, height fill] <|
-            Element.map (StreamerPageMsg << StreamerPageChatBoxMsg) <|
-            chatBox model MainChat "streamerpage-" mainChat streamerPageInfo.chatBox]
+            Element.map (Msg << StreamerPageMsg << StreamerPageChatBoxMsg) <|
+              chatBox model MainChat "streamerpage-" mainChat streamerPageInfo.chatBox]
 
 
 
@@ -95,36 +95,36 @@ streamStatusSetter model streamerPageInfo streamStatus =
             [co [width fill, spacing 20]
                 [ro [width fill]
                     [el [width <| fillPortion 1] <|
-                     el [centerX, Evt.onClick <| StreamerPageMsg <| StreamStatusSetter <| Just True] <|
+                     el [centerX, Evt.onClick <| Msg <| StreamerPageMsg <| StreamStatusSetter <| Just True] <|
                         bubbleActiveMain model (Just True == streamerPageInfo.streamStatus)
                           "Streaming"
                     ,el [width <| fillPortion 1] <|
-                     el [centerX, Evt.onClick <| StreamerPageMsg <| StreamStatusSetter <| Just False] <|
+                     el [centerX, Evt.onClick <| Msg <| StreamerPageMsg <| StreamStatusSetter <| Just False] <|
                         bubbleActiveMain model (Just False == streamerPageInfo.streamStatus)
                           "Hosting"
                     ,el [width <| fillPortion 1] <|
-                     el [centerX, Evt.onClick <| StreamerPageMsg <| StreamStatusSetter Nothing] <|
+                     el [centerX, Evt.onClick <| Msg <| StreamerPageMsg <| StreamStatusSetter Nothing] <|
                         bubbleActiveMain model (Nothing == streamerPageInfo.streamStatus)
                           "Offline"
                     ]
                 ,el [width fill, centerX] <| case streamerPageInfo.streamStatus of
                     Just True -> In.text (fieldStyle model)
-                      {onChange = \str -> StreamerPageMsg <| OverStreamerPage <| \info ->
+                      {onChange = \str -> Msg <| StreamerPageMsg <| OverStreamerPage <| \info ->
                         {info | streamingTitle = str}
                       ,text = streamerPageInfo.streamingTitle
                       ,placeholder = placeholder (Ft.color colorPalette.txSoft2) "Title"
                       ,label = In.labelHidden "Streaming Title"}
-                    Just False -> fieldCheckMain model In.text
+                    Just False -> fieldCheck model In.text
                       streamerPageInfo.hostingCheck
-                      (\str -> StreamerPageMsg <| OverStreamerPage <| \info -> {info | hostingSearch = str})
-                      (\str -> StreamerPageMsg <| HostCheck str)
+                      (\str -> Msg <| StreamerPageMsg <| OverStreamerPage <| \info -> {info | hostingSearch = str})
+                      (\str -> Msg <| StreamerPageMsg <| HostCheck str)
                       streamerPageInfo.hostingSearch
                       "Creator's Name"
                       "Hoting Creator Search Input"
                     _ -> em [height <| px 44]
 
                 ]
-            ,el [centerX, Evt.onClick <| ChangeStreamStatus <| case streamerPageInfo.streamStatus of
+            ,el [centerX, Evt.onClick <| Msg <| ChangeStreamStatus <| case streamerPageInfo.streamStatus of
                   Just True -> Just <| Ok streamerPageInfo.streamingTitle
                   Just False -> Just <| Err streamerPageInfo.hostingSearch
                   _ -> Nothing

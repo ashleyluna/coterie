@@ -1,4 +1,4 @@
-module Chat.ChatBox exposing (..)
+module ChatBox.ChatBox exposing (..)
 
 import Array
 import Browser.Dom
@@ -24,8 +24,8 @@ import Element.Input as In
 import Element.Events as Evt
 import Element.Lazy as La
 
-import Chat.ChatRoom exposing (..)
-import Chat.MessageRoom exposing (..)
+import ChatBox.ChatRoom exposing (..)
+import ChatBox.MessageBox exposing (..)
 import Internal.Internal exposing (..)
 import Internal.Style exposing (..)
 import Main.Model exposing (..)
@@ -62,14 +62,16 @@ chatBox model chatLocale containerName chat cBox =
                            SettingsOverlay info -> wrapper <| settingsOverlay chatBoxName info profile
                            CommunityOverlay info -> wrapper <| communityOverlay chatBoxName info chat.users
                            _ -> []) <|
-                  Element.map ChatRoomMsg <| chatRoom model chatLocale chatBoxName chat cBox.chatRoom
+                  Element.map (Msg << ChatRoomMsg) <|
+                    chatRoom model chatLocale chatBoxName chat cBox.chatRoom
                 _ -> el
                   ([width fill, height fill, scrollbars]
                    ++ let wrapper f = List.singleton <| inFront <| f model cBox
                       in case cBox.chatBoxOverlay of
                            RegisterOverlay info -> wrapper <| registerOverlay info
                            _ -> []) <|
-                  messageRoom model False (ChatRoomMsg << MessageRoomMsg) chatBoxName chat cBox.chatRoom.messageRoom]
+                  Element.map (Msg << ChatRoomMsg << Msg << MessageBoxMsg) <|
+                    messageBox model False chatBoxName chat cBox.chatRoom.messageBox]
 
 
 
@@ -82,7 +84,7 @@ chatBoxHeader model chat cBox =
         el [width <| fillPortion 1] <<
         -- padding is for small buffer, in case user barely misclicks button
         el [centerX, paddingXY 8 0, Ft.size 24
-           ,Evt.onClick <| SetChatBoxOverlay <| overlay] <<
+           ,Evt.onClick <| Msg <| SetChatBoxOverlay <| overlay] <<
         el [hoverTitle name] <<
         bubbleActiveMainFA model (isChatBoxOverlayOn cBox overlay) <<
         faIcon [padding 8]
@@ -97,7 +99,7 @@ chatBoxHeader model chat cBox =
                ,Bg.color colorPalette.bgMain] <|
             el [centerX] <|
             el [width <| fillPortion 1
-               ,Evt.onClick <| SetChatBoxOverlay initialRegisterOverlayInfo] <|
+               ,Evt.onClick <| Msg <| SetChatBoxOverlay initialRegisterOverlayInfo] <|
             el [centerX, Ft.size 18] <|
             bubbleActiveMain model (isChatBoxOverlayOn cBox initialRegisterOverlayInfo) "Sign In"
        Just profile ->
@@ -171,7 +173,7 @@ whispersOverlay chatBoxName info profile model cBox =
   in chatBoxOverlayWrapper model "Whispers"
       [el [width shrink, centerX, paddingXY 0 40] <|
        In.text (fieldStyle model)
-               {onChange = \str -> UpdateChatBoxOverlay <| WhispersOverlay {info | userSearch = str}
+               {onChange = \str -> Msg <| UpdateChatBoxOverlay <| WhispersOverlay {info | userSearch = str}
                ,text = info.userSearch
                ,placeholder = placeholder (Ft.color colorPalette.txSoft2) "Search User"
                ,label = In.labelHidden "userSearchWhisper"}
@@ -180,7 +182,11 @@ whispersOverlay chatBoxName info profile model cBox =
             [centerX, centerY
             ,Ft.size 24, Ft.color colorPalette.txSoft2]
             "No Messages"
-          else elmUIVBar model ChatBoxElmBarMsg (chatBoxName ++ "chatbox-whispers-overlay") cBox.elmBar <|
+          else elmUIVBar model cBox.elmBar (Msg << ChatBoxElmBarMsg) (chatBoxName ++ "chatbox-whispers-overlay")
+                         (\viewport elmBarMsg -> BatchMsgs <|
+                           [Msg <| ChatBoxElmBarMsg elmBarMsg]
+                           --++
+                         ) <|
            em []
       ]
 
@@ -212,7 +218,7 @@ settingsOverlay chatBoxName info profile model cBox =
            cBox.chatBoxSlideDirection
            cBox.initiateChatBoxOverlayHeaderSliding
            (\int -> SettingsOverlay {info | headerPosition = int})
-           (\b1 b2 o -> SlideChatBoxOverlayHeader b1 b2 o)
+           (\b1 b2 o -> Msg <| SlideChatBoxOverlayHeader b1 b2 o)
            ["General","Account","Identity"]
            -- General theme, pronouns, badges, name color
            -- Chat emphasis, text sizem show, animate, nsfw, etc
@@ -250,7 +256,7 @@ settingsOverlay chatBoxName info profile model cBox =
                  --,
                  ]
              ,el [centerX, Ft.color colorPalette.txSoft
-                 ,Evt.onClick <| MsgChatBoxMsg GETLogOut] <|
+                 ,Evt.onClick <| GlobalMsg <| Msg GETLogOut] <|
               bubbleMain model
                  "Log Out"
              ]
@@ -261,10 +267,10 @@ settingsOverlay chatBoxName info profile model cBox =
                  [el [width fill, centerX, paddingBottom 20, Ft.color colorPalette.txSoft] <|
                      sectionTitle model "Pronouns"
                  ,el [width shrink, centerX] <|
-                  fieldCheckChatBox model In.text
+                  fieldCheck model In.text
                       info.invalidPronouns
-                      (\str -> UpdateChatBoxOverlay <| SettingsOverlay {info | pronouns = str})
-                      (\str -> PronounsCheck str)
+                      (\str -> Msg <| UpdateChatBoxOverlay <| SettingsOverlay {info | pronouns = str})
+                      (\str -> Msg <| PronounsCheck str)
                       info.pronouns
                       "ex: Them/Them"
                       "pronounsInput"
@@ -274,7 +280,7 @@ settingsOverlay chatBoxName info profile model cBox =
                        _ -> "Pronouns must not include profanity"
                  ,el ([centerX, paddingBottom 16, Ft.size 20]
                      ++ listIf (info.invalidPronouns == 1)
-                          [Evt.onClick <| POSTSetPronouns info.pronouns]) <|
+                          [Evt.onClick <| Msg <| POSTSetPronouns info.pronouns]) <|
                      bubbleMain model "Save Pronouns"
                  ]
               -- Badges
@@ -307,7 +313,7 @@ badgesSelection model profile info =
              then colorPalette.mainHighlight
              else colorPalette.highlightRed]])
       badgeDisplay int maybeBadge = badgeDisplayWrapper False (not <| maybeBadge == Nothing)
-        (POSTUnEquipBadge int) <|
+        (Msg <| POSTUnEquipBadge int) <|
         case maybeBadge of
           Nothing -> Element.none
           Just emote -> image
@@ -316,7 +322,7 @@ badgesSelection model profile info =
             {src = emote.image.url, description = emote.name}
       badgeSelector inUse allow name emote = badgeDisplayWrapper True
         (allow && not inUse && not (firstBadge /= Nothing && secondBadge /= Nothing))
-        (POSTEquipBadge name <| if firstBadge == Nothing then 1 else 2) <|
+        (Msg <| POSTEquipBadge name <| if firstBadge == Nothing then 1 else 2) <|
         elIf (not inUse) <|
           image ([width <| px 32, height <| px 32, centerX, centerY
                  ,hoverTitle name]
@@ -363,7 +369,7 @@ nameColorSelection model profile info =
       defaultColorSelector defaultColorName = el
         (defaultColorSelectorAttrs <| Just defaultColorName)
         <| el (if Just defaultColorName == info.defaultNameColor then []
-                  else [pointer, Evt.onClick <| POSTSetDefaultColor <| Just defaultColorName])
+                  else [pointer, Evt.onClick <| Msg <| POSTSetDefaultColor <| Just defaultColorName])
         <| chromaCircle 28 settings.themeMode
         <| defaultChromaColor defaultColorName
       randomColorSelector = el
@@ -373,7 +379,7 @@ nameColorSelection model profile info =
               ,htmlStyle "background" <| "linear-gradient(to bottom, lime 33%, red 33% 66%, blue 66% 100%)"
               ] ++
               if Nothing == info.defaultNameColor then []
-                 else [pointer, Evt.onClick <| POSTSetDefaultColor Nothing]
+                 else [pointer, Evt.onClick <| Msg <| POSTSetDefaultColor Nothing]
       hueSlider align value onChange =flip el Element.none <|
         [width <| px 370, height <| px 20 -- 306
         ,Bdr.rounded 8
@@ -392,7 +398,7 @@ nameColorSelection model profile info =
         ,inFront <| In.slider [width <| px 370, height <| px 20]
            {min = 0, max = 360, value = toFloat value, step = Just 1
            ,label = In.labelHidden "Hue Slider"
-           ,onChange = UpdateChatBoxOverlay << SettingsOverlay << onChange << round
+           ,onChange = Msg << UpdateChatBoxOverlay << SettingsOverlay << onChange << round
            ,thumb = In.thumb [width <| px 8, height <| px 20
                              ,Bdr.rounded 8, Bdr.width 2, Bdr.color <| rgb 0 0 0
                              ,Bg.color <| .bgMain <| currentColorPalette_ True
@@ -406,7 +412,7 @@ nameColorSelection model profile info =
             ,max = if vOrC then if themeMode then 90 else 100 else 130
             ,value = toFloat value, step = Just 1
             ,label = In.labelHidden <| String.append label " Slider"
-            ,onChange = UpdateChatBoxOverlay << SettingsOverlay << onChange << round
+            ,onChange = Msg << UpdateChatBoxOverlay << SettingsOverlay << onChange << round
             ,thumb = In.thumb [width <| px 16, height <| px 16
                               ,Bdr.rounded 8
                               ,turnOffElmUIBlueFocus
@@ -433,7 +439,7 @@ nameColorSelection model profile info =
               ,showSliders 2 sliders2]]
       chromaModeSelector mode = el
         (if mode == info.mode then []
-            else [Evt.onClick <| OverSettingsOverlay <| \info_ ->
+            else [Evt.onClick <| Msg <| OverSettingsOverlay <| \info_ ->
                     {info_ | mode = mode}]) <|
         bubbleActiveMain model (info.mode == mode) <|
         showChromaMode mode
@@ -486,7 +492,7 @@ nameColorSelection model profile info =
                 [[LRGB, RGB, LCH, LAB]
                 ,[HSL, HSV, HSI]]]
         ,el [centerX, paddingBottom 16
-            ,Ft.size 22, Evt.onClick <| POSTSetNameColor left right info.mode] <|
+            ,Ft.size 22, Evt.onClick <| Msg <| POSTSetNameColor left right info.mode] <|
             bubbleMain model "Save Gradient"
         ]
 
@@ -503,8 +509,10 @@ communityOverlay chatBoxName info users model cBox =
       specialUsers = List.filter (\(_, ls) -> ls /= []) <|
         List.concatMap (simpleDict <| simpleDict .nameColor << filterUsers) users.specialUsers
       chatters : List (String, NameColor)
-      chatters = List.take (50 * MaybeE.unwrap 1 .stack cBox.elmBar.infiniteScroll) <|
+      chatters =
+        --List.take (50 * MaybeE.unwrap 1 .stack cBox.elmBar.infiniteScroll) <|
         simpleDict .nameColor <| filterUsers users.chatters
+
       usernameStyle username nameColor = el
          [centerX] <|
          mkChromaUsername model.commonInfo.settings.themeMode
@@ -518,26 +526,31 @@ communityOverlay chatBoxName info users model cBox =
   in chatBoxOverlayWrapper model "Community" <|
        [el [width shrink, centerX, paddingTop 40] <|
         In.text (fieldStyle model)
-                {onChange = \str -> UpdateChatBoxOverlay <| CommunityOverlay {info | userSearch = str}
+                {onChange = \str -> Msg <| UpdateChatBoxOverlay <| CommunityOverlay {info | userSearch = str}
                 ,text = info.userSearch
                 ,placeholder = placeholder (Ft.color colorPalette.txSoft2) "Filter Users"
                 ,label = In.labelHidden "userSearchCommunity"}
-       ,elmUIVBar model ChatBoxElmBarMsg (chatBoxName ++ "chatbox-community-overlay") cBox.elmBar <|
-        if specialUsers == [] && chatters == []
-           then ex [centerX, centerY
-                   ,Ft.bold, Ft.size 20, Ft.color colorPalette.txSoft]
-                   "No Users"
-           else co [width fill, spacing 40, paddingXY 16 40] <|
-                   flip List.map specialUsers (\(roleName, userList) -> roleGroupStyle roleName <|
-                   co [width fill, spacing 8, Ft.size 16] <|
-                      flip List.map userList <| \(username, nameColor) ->
-                       usernameStyle username nameColor)
-                   ++ listIf (chatters /= [])
-                        [roleGroupStyle streamerInfo.defaultRole <| co
-                          [width fill, spacing 8, Ft.size 16] <|
-                          flip List.map chatters <| \(username, nameColor) ->
-                            usernameStyle username nameColor
-                        ]
+       ,elmUIVBar model cBox.elmBar (Msg << ChatBoxElmBarMsg)
+         (chatBoxName ++ "chatbox-community-overlay")
+         (\viewport elmBarMsg -> BatchMsgs <|
+           [Msg <| ChatBoxElmBarMsg elmBarMsg]
+           --++
+         ) <|
+         if specialUsers == [] && chatters == []
+            then ex [centerX, centerY
+                    ,Ft.bold, Ft.size 20, Ft.color colorPalette.txSoft]
+                    "No Users"
+            else co [width fill, spacing 40, paddingXY 16 40] <|
+                    flip List.map specialUsers (\(roleName, userList) -> roleGroupStyle roleName <|
+                      co [width fill, spacing 8, Ft.size 16] <|
+                         flip List.map userList <| \(username, nameColor) ->
+                          usernameStyle username nameColor)
+                    ++ listIf (chatters /= [])
+                         [roleGroupStyle streamerInfo.defaultRole <| co
+                           [width fill, spacing 8, Ft.size 16] <|
+                           flip List.map chatters <| \(username, nameColor) ->
+                             usernameStyle username nameColor
+                         ]
        ]
 
 
@@ -545,7 +558,7 @@ communityOverlay chatBoxName info users model cBox =
 registerOverlay : RegisterRecord -> Model -> ChatBox -> Element ChatBoxMsg
 registerOverlay info model cBox =
   let colorPalette = currentColorPalette model
-      updateRegister = UpdateChatBoxOverlay << RegisterOverlay
+      updateRegister = Msg << UpdateChatBoxOverlay << RegisterOverlay
       socialButton top bottom left right social wrapper = el [centerX] <|
         (if not info.signUp || info.invalidUsername <= 1 then wrapper else el []) <|
         flip faIcon social <|
@@ -572,7 +585,7 @@ registerOverlay info model cBox =
                            else defaultCursor] <|
                        "https://id.twitch.tv/oauth2/authorize?client_id=" ++ streamerInfo.secrets.twitchClientId ++ "&redirect_uri=" ++ apiUrl model.commonInfo.localInfo.url ++ "register/twitch&response_type=code&scope=user:read:email%20user:read:subscriptions"
             ,socialButton 7 7 8 6 "fab fa-google" <|
-               el [centerX, Evt.onClick StartGoogleSignIn]
+               el [centerX, Evt.onClick <| Msg StartGoogleSignIn]
             ]
            ,[socialButton 10 6 10 10 "fab fa-discord" <|
                el []
@@ -598,13 +611,12 @@ registerOverlay info model cBox =
            ,paddingTop 20] <|
            co [width fill, height <| px 100, spacing 20
               ,htmlStyle "bottom" <| if info.signUp then "0px" else "124px"
-              ,htmlStyle "transition" "bottom 1s ease-in-out"
-              ,htmlStyle "-webkit-transition" "bottom 1s ease-in-out" ] <|
+              ,htmlStyle "transition" "bottom 1s ease-in-out"] <|
               [el [width fill, centerX, Ft.size 20] <|
-                  fieldCheckChatBox model In.text
+                  fieldCheck model In.text
                     info.invalidUsername
                     (\str -> updateRegister {info | username = str})
-                    (\str -> SignUpCheck str)
+                    (\str -> Msg <| SignUpCheck str)
                     info.username
                     "Username"
                     "usernameInput"
@@ -620,7 +632,7 @@ registerOverlay info model cBox =
            ,ex [centerX, Ft.color colorPalette.highlightBlue
                ,mouseOver [Ft.color colorPalette.highlightBlueBright]
                ,pointer
-               ,Evt.onClick <| MsgChatBoxMsg <| HomePageMsg <| AppendSubPage HomeSubPageAgreement]
+               ,Evt.onClick <| GlobalMsg <| Msg <| HomePageMsg <| AppendSubPage HomeSubPageAgreement]
                "user agreement"]
        ]
 
@@ -631,4 +643,4 @@ registerOverlay info model cBox =
 
 
 chatBoxOverlayWrapper : Model -> String -> List (Element ChatBoxMsg) -> Element ChatBoxMsg
-chatBoxOverlayWrapper = overlayWrapper <| SetChatBoxOverlay NoChatBoxOverlay
+chatBoxOverlayWrapper = overlayWrapper <| Msg <| SetChatBoxOverlay NoChatBoxOverlay

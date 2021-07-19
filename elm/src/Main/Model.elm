@@ -10,7 +10,7 @@ import Browser.Navigation exposing (Key)
 
 
 type Bool3 = Positive | Neutral | Negative
-type Either3 a b c = Left a | Middle b | Right c
+--type Either3 a b c = Left a | Middle b | Right c
 
 type alias Model =
   {setUp : SetUp
@@ -280,8 +280,10 @@ type alias Chat =
   ,messages : List ChatMessage}
 
 type alias ChatUserList =
-  {specialUsers : List (Dict String (Dict String ChatUser)) -- order by rolePower, roleName, Username
-  ,chatters : Dict String ChatUser}
+  {specialUsers : List (Dict String (Dict String ChatUser)) -- order by rolePower, roleName, username
+  ,subscribers : List (Dict String ChatUser) -- order by tier, username
+  ,chatters : Dict String ChatUser
+  }
 
 type alias ChatUser =
   {username : String
@@ -336,22 +338,22 @@ type ChatMessage = UserMessage UserMessageRecord
 
 type alias UserMessageRecord =
   {user : ChatUser
-  ,time : Int -- in milli seconds
+  ,timestamp : Int -- in milli seconds
   --,messageType : Maybe SpecialMessage
   ,message : ParsedMessage
   }
 
 type alias TempUserMessageRecord =
-  {time : Int
+  {timestamp : Int
   ,message : ParsedMessage
   }
 
 type alias SystemMessageRecord =
-  {time : Int
+  {timestamp : Int
   ,message : ParsedMessage}
 --type SpecialMessage = HightlightReward
 type alias RawMessageRecord =
-  {time : Int
+  {timestamp : Int
   ,message : ParsedMessage}
 
 
@@ -459,12 +461,12 @@ type alias ChatPageInfo =
   {chatBox : ChatBox}
 
 type alias ChatStreamPageInfo =
-  {messageRoom : MessageRoom}
+  {messageBox : MessageBox}
 
 type alias StreamerPageInfo =
   {chatBox : ChatBox
   ,modRoom : ChatRoom
-  ,atMessageRoom : MessageRoom
+  ,atMessageBox : MessageBox
   ,streamStatus : Maybe Bool -- Nothing == Offline, Just False == Hosting, Just True == Streaming
   ,streamingTitle : String
   ,hostingSearch : String
@@ -482,6 +484,9 @@ type alias StreamerPageInfo =
 
 type alias ChatBox =
   {chatRoom : ChatRoom
+  ,elmBarFocus : Maybe Int
+  ,elmBarTop : Maybe Bool
+  ,elmBarBottom : Maybe Bool
   ,elmBar : ElmBar
   ,chatBoxOverlay : ChatBoxOverlay
   --,chatBoxOverlayHistory : Maybe ChatBoxOverlay
@@ -521,8 +526,11 @@ type alias RegisterRecord =
   ,invalidUsername : Int}
     -- ^ 0 = Good, 1 = Must Be AlphaNum,
 
+
+
+
 type alias ChatRoom =
-  {messageRoom : MessageRoom
+  {messageBox : MessageBox
   ,chatRoomOverlay : ChatRoomOverlay
   ,mentionBox : Maybe Int
   ,input : String}
@@ -530,14 +538,29 @@ type alias ChatRoom =
 type ChatRoomOverlay = NoChatRoomOverlay
                      | EmoteOverlay
 
-type alias MessageRoom =
+
+
+
+type alias MessageBox =
   {hoverUsername : Bool
-  ,highlightBox : List HighlightedUser
-  ,selectedUser : Int
+  ,elmBar : ElmBar
+  ,userBarSelected : Int
   ,userBarMargin : Float
+  ,tray : Maybe TrayRecord
+  ,highlightList : HighlightList}
+
+type alias TrayRecord =
+  {open : Int
+  ,makingRequest : Bool
+  -- Nothing == first 50, Just timestamp == 25 beore and after
+  -- timestamp (uses a specific message as a pivot point)a
+  ,focus : Maybe Int
   ,elmBar : ElmBar}
 
-type alias HighlightBox = List HighlightedUser
+
+
+
+type alias HighlightList = List HighlightedUser
 
 type alias HighlightedUser =
   {username : String
@@ -552,15 +575,33 @@ type alias HighlightedUserInfo =
   ,accountCreation : Int
   ,power : Int
   ,season : Int
-  --,modInfo : Maybe HighlightedUserModInfo
+  ,modInfo : Maybe HighlightedUserModInfo
   }
-
 
 type alias HighlightedUserModInfo =
-  {numMessages : Int
-  ,modActions : List ModAction
-  --,messges : List ParsedMessage
+  {meaningfulMessages : Int
+  ,messagesInfo : Maybe HighlightedUserMessages
   }
+
+type alias HighlightedUserMessages =
+  {
+  --,modActions : List ModAction
+  --,userState : Maybe UserState
+  -- Nothing == no need to ask for more past messages
+  -- Just timestamp == ask for more messages from before timestamp
+  top : Maybe Int
+  -- Nothing == no need to ask for more recent messages
+  -- Just timestamp == ask for more messages from after timestamp
+  ,bottom : Maybe Int
+  ,messages : List HighlightedMessageRecord
+  }
+
+type alias HighlightedMessageRecord =
+  {timestamp : Int
+  ,message : ParsedMessage}
+
+type UserState = Banned
+               | Censored
 
 type ModAction = Ban BanRecord
                | Censor CensorRecord
@@ -614,8 +655,40 @@ type alias ModCommentRecord =
 
 type alias ElmBar =
   {viewport : Maybe Viewport
-  ,infiniteScroll : Maybe
-     {direction : Bool
-     ,stack : Int}
+  --,infiniteScroll : Maybe InfiniteScroll
   ,autoScroll : Maybe Bool
   }
+
+type alias InfiniteScroll =
+  {direction : Bool}
+
+
+{-
+Elmbar Notes
+
+Elmbar will not come with a viewport, it needs to be found with getViewportOf
+
+infiniteScroll, autoScroll are optional and are turned on with Just values.
+
+If infiniteScroll is on
+  - when the user scrolls to the top or bottom of the viewport (depending on the
+    direction) will change the stack number and maybe send a request to the
+    server for more data.
+  - direction determines where the "bottom" of the stack is. True == top and
+    False == bottom, or True == infiniteScroll downward, False == Upward
+  - The elements inside the Elmbar should be organized into blocks.
+  - stack (default = Nothing) determines what blocks are shown.
+  - The initial "bottom" block == Nothing, the 2nd block == Just (Left 1).
+  - Nothing represents the "bottom of the stack" or the "start of the stack".
+  - Adding to the stack will set stack a just value of Result Int.
+  - Just Err int represents being in the middle of the stack where int is the
+    block position above the bottom.
+  - Just Ok int represents the opposite of "the end of the stack".
+  - ElmBar knows that there are no more blocks after int and will not add more
+    to stack or request more from the server when scrolling.
+
+If autoScroll is on, a) If autoScroll is Just True, AutoScrollDown will update
+  the viewport b) TriggerAutoScrollDown (a global Msg) will trigger AutoScrollDown
+
+
+-}

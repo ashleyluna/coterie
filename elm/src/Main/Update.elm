@@ -35,9 +35,10 @@ those sections
 -}
 
 update : Msg -> Model -> (Model, Cmd Msg)
-update msg model = List.foldr
-  (\f -> f model msg)
-  (model, Cmd.none)
+update msg model = updateGeneralMsg model msg identity <| \model_ msg_ _ ->
+  List.foldr
+  (\f -> f model_ msg_)
+  (model_, Cmd.none)
   [generalMsgs
   ,socketUpdates
   ,updateLiveInfo
@@ -47,21 +48,19 @@ update msg model = List.foldr
   --,updateEverythingElse
   ]
 
-
-generalMsgs : Update
+--generalMsgs : Update
 generalMsgs model msg next =
   let overSetUp f = {model | setUp = f model.setUp}
   in case msg of
-       BatchMsgs msgs -> pair model <| Cmd.batch <| List.map cmdMsg msgs
-       MsgCmd cmd -> (model, cmd)
-       UseNow f -> pair model <| do <| Task.map f Time.now
+       --BatchMsgs msgs -> pair model <| Cmd.batch <| List.map cmdMsg msgs
+       --MsgCmd cmd -> (model, cmd)
+       --UseNow f -> pair model <| do <| Task.map f Time.now
        --SetUp -> (model, Cmd.none) -- TODO
-       LogMessage str -> pair model <| logMessage str
-       WaitHalfASec message -> pair model <| do <|
-         waitHalfASec <| Task.succeed <| message
+       --WaitHalfASec message -> pair model <| do <|
+       --  waitHalfASec <| Task.succeed <| message
        SetPage page -> case page of
          HomePage pageInfo -> pair {model | page = HomePage pageInfo} <|
-           cmdMsg <| HomePageMsg CheckStreamTitleLength
+           cmdMsg <| Msg <| HomePageMsg CheckStreamTitleLength
          pageInfo -> noCmd {model | page = pageInfo}
        SetUpProfile -> noCmd <| overSetUp <| \setup -> {setup | profile = True}
        --SetUpProfile -> noCmd <| overSetUp <| \setup -> {setup | profile = True}
@@ -70,7 +69,7 @@ generalMsgs model msg next =
          in Http.request
              {method = method
              ,headers = headers ++ MaybeE.unwrap []
-               (List.singleton << Http.header "X-CSRFTOKEN") maybeCSRFToken -- "X-XSRF-TOKEN"
+               (List.singleton << Http.header "X-XSRF-TOKEN") maybeCSRFToken -- "X-CSRFTOKEN"
              ,timeout = Just 5000
              ,tracker = Nothing
              ,url = apiUrl model.commonInfo.localInfo.url ++ apiPath
@@ -86,11 +85,11 @@ generalMsgs model msg next =
                     else JD.fail "Wrong Response Message Type"]
              }
        ApiGET headers apiPath responseType decoder expectResponse -> pair model <| cmdMsg <|
-         ApiREQUEST "GET"
+         Msg <| ApiREQUEST "GET"
                     Http.emptyBody
                     headers apiPath responseType decoder expectResponse
        ApiPOST headers apiPath requestType body decoder expectResponse -> pair model <| cmdMsg <|
-         ApiREQUEST "POST"
+         Msg <| ApiREQUEST "POST"
                     (Http.jsonBody <| JE.object <|
                       pair "type" (JE.string requestType) :: body)
                     headers apiPath requestType decoder expectResponse

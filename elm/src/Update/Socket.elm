@@ -19,7 +19,7 @@ import Main.Ports exposing (..)
 
 
 
-socketUpdates : Update
+--socketUpdates : Update
 socketUpdates model msg next = case msg of
   SocketRequest req -> pair model <| socketMessageEncoder req model
   SocketResponse str ->
@@ -55,21 +55,21 @@ socketMessageEncoder req model =
 
 socketMessageDecoder : Model -> String -> JD.Decoder Msg
 socketMessageDecoder model response = case response of
-  "streaming" -> JD.map (UpdateStreamStatus << Streaming) <| JD.map5 StreamingRecord
+  "streaming" -> JD.map (Msg << UpdateStreamStatus << Streaming) <| JD.map5 StreamingRecord
     (JD.oneOf [JD.map TwitchStream <| JD.field "twitch" JD.string
               ,JD.map YouTubeStream <| JD.field "youtube" JD.string])
     (JD.field "title" JD.string)
     (JD.field "start_time" JD.int)
     (JD.succeed Nothing) -- upTime,
     (JD.field "viewer_count" JD.int)
-  "hosting" -> JD.map (UpdateStreamStatus << Hosting) <| JD.map2 HostingRecord
+  "hosting" -> JD.map (Msg << UpdateStreamStatus << Hosting) <| JD.map2 HostingRecord
     (JD.oneOf [JD.map TwitchStream <| JD.field "youtube" JD.string
               ,JD.map YouTubeStream <| JD.field "twitch" JD.string])
     (JD.field "title" JD.string)
-  "offline" -> JD.succeed <| UpdateStreamStatus Offline
-  "main_chat" -> JD.map MainChatMsg <| jdFieldType "type_chat" <|
+  "offline" -> JD.succeed <| Msg <| UpdateStreamStatus Offline
+  "main_chat" -> JD.map (Msg << MainChatMsg) <| jdFieldType "type_chat" <|
     socketChatMessageDecoder model.commonInfo model.liveInfo.mainChat.users
-  "mod_chat" -> JD.map ModChatMsg <| jdFieldType "type_chat" <|
+  "mod_chat" -> JD.map (Msg << ModChatMsg) <| jdFieldType "type_chat" <|
     socketChatMessageDecoder model.commonInfo model.liveInfo.mainChat.users -- TODO modChat
   _ -> JD.fail <| "Do not recognise socket response type: '" ++ response ++ "'"
 

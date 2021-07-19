@@ -33,12 +33,11 @@ import Main.Ports exposing (..)
 
 
 
-updateChat : UpdateElement ChatMsg Chat
+--updateChat : UpdateElement ChatMsg Chat
 updateChat model msg chat liftChatMsg setChat =
   let appendMessage message = if List.length chat.messages < 200
                         then chat.messages ++ [message]
                         else List.drop 1 chat.messages ++ [message]
-
   in case msg of
        AddChatMessage message ->
          (setChat <| {chat | messages = case Debug.log "AddChatMessage" message of
@@ -56,13 +55,13 @@ updateChat model msg chat liftChatMsg setChat =
                   _ -> appendMessage message
            _ -> appendMessage message
            }
-         ,cmdMsg TriggerAutoScrollDown)
+         ,cmdMsg <| Msg TriggerAutoScrollDown)
        AddDelatedUserMessage userMessage ->
          (setChat <| {chat | messages = appendMessage <| DelayedUserMessage userMessage}
-         ,cmdMsg TriggerAutoScrollDown)
+         ,cmdMsg <| Msg TriggerAutoScrollDown)
        AddTempUserMessage message ->
          (setChat <| {chat | messages = appendMessage <| TempUserMessage message}
-         ,cmdMsg TriggerAutoScrollDown)
+         ,cmdMsg <| Msg TriggerAutoScrollDown)
        RemoveUserMessage username str -> noCmd <| setChat <|
          let removeMessage messages = case messages of -- slightly more efficient than filter
                message2 :: otherMessages -> case message2 of
@@ -78,12 +77,14 @@ updateChat model msg chat liftChatMsg setChat =
                 Just (Special str) -> {users | specialUsers =
                   flip List.map users.specialUsers <| Dict.update str <| Maybe.map <|
                     Dict.insert user.username user}
+                Just (Subscriber sub) -> {users | subscribers =
+                  ListE.updateAt (sub.tier - 1) (Dict.insert user.username user) users.subscribers}
                 _ -> {users | chatters = Dict.insert user.username user users.chatters}}
        RemoveChatUser username -> noCmd <| setChat <|
          {chat | users = let users = chat.users
-           in {users | specialUsers =
-                       flip List.map users.specialUsers <| Dict.map <| \_ ->
-                         Dict.remove username
+           in {users | specialUsers = flip List.map users.specialUsers <|
+                         Dict.map <| \_ -> Dict.remove username
+                     , subscribers = List.map (Dict.remove username) users.subscribers
                      , chatters = Dict.remove username users.chatters}}
          --{chat | users = Dict.remove username chat.users}
        CensorChatUser username -> noCmd <| setChat <|
@@ -103,14 +104,15 @@ updateChat model msg chat liftChatMsg setChat =
                \(username,(user, power,roleName)) -> power
              specialUsers : List (Dict String (Dict String ChatUser)) -- List By RolePower (Dict By RoleName (List (username, (nameColor, power, roleName))))
              specialUsers = flip List.map groupsByPower <| \powerGroup ->
-               Dict.map (\_ ls -> flip Dict.map (Dict.fromList ls) <|
-                         \_ (user,_,_) -> user) <|
+               Dict.map (\_ ls -> flip Dict.map (Dict.fromList ls) <| \_ (user,_,_) -> user) <|
                DictE.groupBy (\(username,(user, power,roleName)) -> roleName) powerGroup
+               --flip DictE.filterMap userList <| \name user -> case user.role of
+               -- TODO no idea what ^ code was suppose to be, subscribers need to ordered later
              chatters = Dict.filter (\_ user -> user.role == Nothing) userList
-         in {chat | users = ChatUserList specialUsers chatters}
+         in {chat | users = ChatUserList specialUsers [] chatters}
        AddSystemMessage liftChatMessage message -> pair model <| cmdMsg <|
          UseNow <| \now -> liftChatMessage <| AddChatMessage <| SystemMessage
-           {time = Time.posixToMillis now
+           {timestamp = Time.posixToMillis now
            ,message = parseMessage model.commonInfo model.liveInfo.mainChat.users
                                      renderAll message}
 

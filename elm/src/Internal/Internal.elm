@@ -11,6 +11,7 @@ import Result.Extra as ResultE
 import Parser exposing ((|.),(|=))
 import Process
 import Task
+import Time
 import Tuple
 import Url exposing (..)
 
@@ -18,13 +19,16 @@ import Element exposing (..)
 
 import Main.Msg exposing (..)
 import Main.Model exposing (..)
+import Main.Ports exposing (..)
 
 
 
 
 
 pair = Tuple.pair
+triple a b c = (a,b,c)
 
+indexedMap f m = List.indexedMap (\int -> f <| int + 1) m
 
 wrapIf b f =
   if b then f else identity
@@ -38,10 +42,31 @@ flip f b a = f a b
 flip2 : (a -> b -> c -> d) -> (b -> c -> a -> d)
 flip2 f b c a = f a b c
 
+appFunc  f g a = f a (g a)
+bindFunc f g a = f (g a) a
+
+mapMaybeToList maybe f = case maybe of
+  Just a -> f a
+  _ -> []
+
 -- Cmd
 
 --do : Task.Task msg -> Cmd msg
 do = Task.perform identity
+
+updateGeneralMsg : Model -> GeneralMsg msg -> (GeneralMsg msg -> Msg)
+               -> (Model -> msg -> (GeneralMsg msg -> Msg) -> (Model, Cmd Msg))
+               -> (Model, Cmd Msg)
+updateGeneralMsg model msg liftMsg updater = case msg of
+  NoMsg -> noCmd model
+  BatchMsgs msgs -> pair model <| Cmd.batch <| List.map (cmdMsg << liftMsg) msgs
+  MsgCmd cmd -> pair model cmd
+  GlobalMsg msg_ -> pair model <| cmdMsg msg_
+  UseNow f -> pair model <| do <| Task.map (liftMsg << f) Time.now
+  Wait time msg_ -> pair model <| do <|
+    wait time <| Task.succeed <| liftMsg msg_
+  LogMessage str -> pair model <| logMessage str
+  Msg msg_ -> updater model msg_ liftMsg
 
 cmdMsg : msg -> Cmd msg
 cmdMsg = do << Task.succeed
@@ -79,7 +104,7 @@ lastWord str = String.fromList <| List.reverse <|
 renderAll = RenderOptions True True
 
 apiPOSTDefault apiPath requestType body decoder =
-  cmdMsg <| ApiPOST [] apiPath requestType body decoder <|
+  cmdMsg <| Msg <| ApiPOST [] apiPath requestType body decoder <|
     \response -> case response of
       Err err -> httpErrorMsg err
       Ok resMsg -> resMsg
@@ -184,16 +209,17 @@ initialHomePageInfo = HomePage
     --                 ,page2Info = Just {month3Package = False
     --                                   ,message = ""}}
   ,chatBox = initialChatBox}
+
 initialChatPageInfo = ChatPage
   {chatBox = initialChatBox}
 
 initialChatStreamPageInfo = ChatStreamPage
-  {messageRoom = initialMessageRoom}
+  {messageBox = initialMessageBox}
 
 initialStreamerPageInfo = StreamerPage
   {chatBox = initialChatBox
   ,modRoom = initialChatRoom
-  ,atMessageRoom = initialMessageRoom
+  ,atMessageBox = initialMessageBox
   ,streamStatus = Just True -- Nothing == Offline, Just False == Hosting, Just True == Streaming
   ,streamingTitle = ""
   ,hostingSearch = ""
@@ -202,7 +228,12 @@ initialStreamerPageInfo = StreamerPage
 
 initialChatBox =
   {chatBoxOverlay = NoChatBoxOverlay
-  ,elmBar = initialElmBar
+  ,elmBar = {viewport = Nothing
+            --,infiniteScroll = Just <| InfiniteScroll True
+            ,autoScroll = Nothing}
+  ,elmBarTop = Nothing
+  ,elmBarBottom = Nothing
+  ,elmBarFocus = Nothing
   --,chatBoxOverlayHistory : Maybe ChatBoxOverlay
   ,initiateChatBoxOverlayHeaderSliding = False
   ,chatBoxSlideDirection = True
@@ -212,21 +243,17 @@ initialChatRoom =
   {chatRoomOverlay = NoChatRoomOverlay
   ,mentionBox = Nothing
   ,input = ""
-  ,messageRoom = initialMessageRoom}
+  ,messageBox = initialMessageBox}
 
-initialMessageRoom =
+initialMessageBox =
   {hoverUsername = False
-  ,highlightBox = []
-  ,selectedUser = 0
+  ,userBarSelected = 0
   ,userBarMargin = 0
   ,elmBar = {viewport = Nothing
-            ,infiniteScroll = Nothing
-            ,autoScroll = Just True}}
-
-initialElmBar =
-  {viewport = Nothing
-  ,infiniteScroll = Just {direction = False, stack = 1}
-  ,autoScroll = Nothing}
+            --,infiniteScroll = Nothing
+            ,autoScroll = Just True}
+  ,highlightList = []
+  ,tray = Nothing}
 
 initialMainMainBoxPageInfo = MainMainBoxPage
 
@@ -325,8 +352,8 @@ isChatRoomOverlayOn chatRoom chatRoomOverlay =
 
 getCsrfToken cookie =
   let parser = Parser.succeed (identity)
-        |. Parser.chompUntil "csrftoken=" -- XSRF-TOKEN
-        |. Parser.token "csrftoken="
+        |. Parser.chompUntil "XSRF-TOKEN=" -- csrftoken
+        |. Parser.token "XSRF-TOKEN="
         |= Parser.getChompedString (Parser.chompWhile Char.isAlphaNum)
   in case Parser.run parser cookie of
        Err err -> Err <| Parser.deadEndsToString err

@@ -24,7 +24,7 @@ import Element.Lazy as La
 
 import List.Extra
 
-import Chat.ChatBox exposing (..)
+import ChatBox.ChatBox exposing (..)
 import Internal.Internal exposing (..)
 import Internal.Style exposing (..)
 import Main.Model exposing (..)
@@ -48,7 +48,7 @@ homePage model homePageInfo =
        ,ro [width fill, height fill]
            [mainBox model homePageInfo
            ,el [width <| px 500, height fill] <|
-               Element.map (HomePageMsg << HomeChatBoxMsg) <|
+               Element.map (Msg << HomePageMsg << HomeChatBoxMsg) <|
                chatBox model MainChat "homepage-" mainChat homePageInfo.chatBox]]
 
 
@@ -86,7 +86,6 @@ navBar model homePageInfo =
                ,height <| px 40
                ,htmlClass "logoWrapper"
                ,htmlStyle "transition" "width 0.75s ease-in-out, padding 0.75s ease-in-out"
-               ,htmlStyle "-webkit-transition" "width 0.75s ease-in-out, padding 0.75s ease-in-out"
                ]
         ]
         ++
@@ -101,22 +100,20 @@ navBar model homePageInfo =
             ,let maxStreamTitleLength = 1000
                  titleScrollTime = (homePageInfo.streamTitleLength - maxStreamTitleLength) / 100 -- 1 second per 100px
              in el [height <| px 48, Ft.size 18, Ft.bold
-                   ,Evt.onMouseEnter <| HomePageMsg <| HoverTitle True
-                   ,Evt.onMouseLeave <| HomePageMsg <| HoverTitle False
+                   ,Evt.onMouseEnter <| Msg <| HomePageMsg <| HoverTitle True
+                   ,Evt.onMouseLeave <| Msg <| HomePageMsg <| HoverTitle False
                    ,htmlStyle "cursor" "default"]
              -- wrapper for the title bar, controls the slding when title changes
              <| el [height fill, alignRight, clipX
                    ,htmlStyle "width" <| if homePageInfo.streamTitleLength >= maxStreamTitleLength
                                             then String.fromInt maxStreamTitleLength ++ "px"
                                             else String.fromInt (round homePageInfo.streamTitleLength) ++ "px"
-                   ,htmlStyle "transition" "width 2s ease-in-out"
-                   ,htmlStyle "-webkit-transition" "width 2s ease-in-out"]
+                   ,htmlStyle "transition" "width 2s ease-in-out"]
                 -- wrapper for the title tx, controls hover scrolling
              <| ex [htmlID "stream-title", centerY
                    ,moveLeft <| if homePageInfo.hoverTitle && homePageInfo.streamTitleLength >= maxStreamTitleLength
                                    then homePageInfo.streamTitleLength - maxStreamTitleLength else 0
-                   ,htmlStyle "transition" <| "transform " ++ String.fromFloat titleScrollTime ++ "s linear 0.1s"
-                   ,htmlStyle "-webkit-transition" <| "transform " ++ String.fromFloat titleScrollTime ++ "s linear 0.1s"]
+                   ,htmlStyle "transition" <| "transform " ++ String.fromFloat titleScrollTime ++ "s linear 0.1s"]
                 -- the title tx
              <| case model.liveInfo.streamStatus of
                   Just (Streaming info) -> info.title
@@ -129,17 +126,15 @@ navBar model homePageInfo =
                    _ -> 2
                  titleScrollTime = 102 / 300 -- 1 second per 100px
              in el [height <| px 48, Ft.size 16, Ft.bold
-                   ,pointer, Evt.onClick <| HomePageMsg <| NextCounterPosition]
+                   ,pointer, Evt.onClick <| Msg <| HomePageMsg <| NextCounterPosition]
              -- wrapper for the count bar, controls the slding when stream status changes
              <| el [height fill, alignRight, clipX
                    ,htmlStyle "width" <| String.fromInt viewCountLength ++ "px"
-                   ,htmlStyle "transition" "width 2s ease-in-out"
-                   ,htmlStyle "-webkit-transition" "width 2s ease-in-out"]
+                   ,htmlStyle "transition" "width 2s ease-in-out"]
              -- wrapper for the count tx, controls hover scrolling
              <| el [centerY
                    ,moveLeft <| if homePageInfo.counterPosition == 0 then 0 else 102
-                   ,htmlStyle "transition" <| "transform " ++ String.fromFloat titleScrollTime ++ "s linear 0.05s"
-                   ,htmlStyle "-webkit-transition" <| "transform " ++ String.fromFloat titleScrollTime ++ "s linear 0.05s"]
+                   ,htmlStyle "transition" <| "transform " ++ String.fromFloat titleScrollTime ++ "s linear 0.05s"]
              -- the count tx
              <| case model.liveInfo.streamStatus of
                      Just (Streaming streamInfo) ->
@@ -194,8 +189,6 @@ mainBox model homePageInfo =
                else [alpha <| if fade then 0 else 1
                     ,htmlStyle "transition" <| if fade
                       then "opacity 0.375s, transform 0.75s" else "transform 0.75s"
-                    ,htmlStyle "-webkit-transition" <| if fade
-                      then "opacity 0.375s, transform 0.75s" else "transform 0.75s"
                     ])
       wrapper fade position back mainBoxPage = el
         ([width fill, height fill]
@@ -247,7 +240,6 @@ logo model homePageInfo =
         ,HtmlA.style "margin-left" <| if logoShrink then "12px"
           else String.fromInt (round <| 182 - 0.5 * toFloat logoWidth) ++ "px"
         ,HtmlA.style "transition" "width 0.75s ease-in-out, height 0.75s ease-in-out, margin 0.75s ease-in-out"
-        ,HtmlA.style "-webkit-transition" "width 0.75s ease-in-out, height 0.75s ease-in-out, margin 0.75s ease-in-out"
         ,HtmlA.style "z-index" "1"
         ,HtmlA.attribute "src" logoImage.url
         ,HtmlA.attribute "alt" "LogoImage"
@@ -255,7 +247,7 @@ logo model homePageInfo =
         if List.member model.liveInfo.streamStatus [Nothing, Just Offline]
            then []
            else [HtmlA.style "cursor" "pointer"
-                ,HtmlE.onClick <| HomePageMsg <|
+                ,HtmlE.onClick <| Msg <| HomePageMsg <|
                    if homePageInfo.streamScreenSize || isSubPageOn homePageInfo.subPage initialMainMainBoxPageInfo
                       then SetStreamScreenSize <| not logoShrink
                       else SetSubPageDefault True
@@ -297,7 +289,6 @@ streamScreen model homePageInfo =
         []
   in el ([Bg.color colorPalette.bgMain
          ,htmlStyle "transition" "width 0.75s ease-in-out, height 0.75s ease-in-out, margin 0.75s ease-in-out"
-         ,htmlStyle "-webkit-transition" "width 0.75s ease-in-out, height 0.75s ease-in-out, margin 0.75s ease-in-out"
          ] ++
          case screenShrinkSize of
            Just True -> [htmlStyle "width" "100%"
@@ -309,7 +300,7 @@ streamScreen model homePageInfo =
                          ,htmlStyle "margin-top" "160px"
                          ,htmlStyle "margin-left" "16px"
                          ,pointer
-                         ,Evt.onClick <| HomePageMsg <| SetStreamScreenSize True
+                         ,Evt.onClick <| Msg <| HomePageMsg <| SetStreamScreenSize True
                          ,inFront <| el ([width fill, height fill, Ft.size 24
                                          ,htmlStyle "z-index" "1"
                                          ,Ft.color <| rgba255 220 220 220 0
@@ -339,7 +330,7 @@ sidePanel model homePageInfo =
   let colorPalette = currentColorPalette model
       overlayButton subPageInfo = el
             [Ft.size 18
-            ,Evt.onClick <| HomePageMsg <| if isSubPageOn homePageInfo.subPage subPageInfo
+            ,Evt.onClick <| Msg <| HomePageMsg <| if isSubPageOn homePageInfo.subPage subPageInfo
               then UnappendSubPage
               else AppendSubPage subPageInfo] <<
             bubbleActiveMain model (isSubPageOn homePageInfo.subPage subPageInfo)
@@ -356,7 +347,7 @@ sidePanel model homePageInfo =
 donateMainBoxPage : DonateRecord -> Model -> HomePageInfo -> Bool -> Element Msg
 donateMainBoxPage subPageInfo model homePageInfo back =
   let colorPalette = currentColorPalette model
-      setDonate = HomePageMsg << UpdateSubPage << HomeSubPageDonate
+      setDonate = Msg << HomePageMsg << UpdateSubPage << HomeSubPageDonate
   in mainBoxPageWrapper model <|
        co [width fill, height fill, spacing 64
           ,Ft.size 16, Ft.bold, noSelection]
@@ -420,7 +411,7 @@ donateMainBoxPage subPageInfo model homePageInfo back =
                    ,mouseOver [Ft.color colorPalette.bgMain
                               ,Bg.color colorPalette.highlightBlue
                               ,Bdr.color colorPalette.highlightBlue]
-                   ,Evt.onClick <| HomePageMsg <| POSTDonation subPageInfo]
+                   ,Evt.onClick <| Msg <| HomePageMsg <| POSTDonation subPageInfo]
                    ++ buttonStyle
                    ++ colorTransitionStyle) <|
                ex [centerX] "Confirm"
@@ -437,7 +428,7 @@ donateMainBoxPage subPageInfo model homePageInfo back =
 subscribeMainBoxPage : SubscribeRecord -> Model -> HomePageInfo -> Bool -> Element Msg
 subscribeMainBoxPage subPageInfo model homePageInfo back =
   let colorPalette = currentColorPalette model
-      setSubscribe = HomePageMsg << UpdateSubPage << HomeSubPageSubscribe
+      setSubscribe = Msg << HomePageMsg << UpdateSubPage << HomeSubPageSubscribe
       tieredBenefit tier = ex
         ([centerX]
         ++ if subPageInfo.tier >= tier
@@ -467,7 +458,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
           homePageInfo.subPageHeaderSlideDirection
           homePageInfo.initiateSubPageHeaderSliding
           (\int -> HomeSubPageSubscribe {subPageInfo | tier = int})
-          (\b1 b2 o -> HomePageMsg <| SlideSubPageHeader b1 b2 o)
+          (\b1 b2 o -> Msg <| HomePageMsg <| SlideSubPageHeader b1 b2 o)
           (flip List.map (List.range 1 <| Array.length streamerInfo.subscriptionTiersLogos)
                 ((++) "Tier " << String.fromInt))
        ,case Array.get (subPageInfo.tier - 1) streamerInfo.subscriptionTiersLogos of
@@ -530,10 +521,10 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
           Neutral -> co
             [centerX, spacing 20, Ft.size 16] <|
             [el [width shrink, centerX] <|
-             fieldCheckMain model In.username
+             fieldCheck model In.username
                subPageInfo.inValidGiftFriendSearch
                (setSubscribe << \str -> {subPageInfo | giftFriendSearch = str})
-               (\str -> HomePageMsg <| GiftFriendCheck str)
+               (\str -> Msg <| HomePageMsg <| GiftFriendCheck str)
                subPageInfo.giftFriendSearch
                "User"
                "Subscription Gift User Search Input"
@@ -584,7 +575,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
                                ,mouseOver [Ft.color colorPalette.bgMainVeryDark
                                           ,Bg.color colorPalette.highlightBlue
                                           ,Bdr.color colorPalette.highlightBlue]
-                               ,Evt.onClick <| HomePageMsg <| AppendSubPage <| HomeSubPageSubscribe2
+                               ,Evt.onClick <| Msg <| HomePageMsg <| AppendSubPage <| HomeSubPageSubscribe2
                                  {tier = subPageInfo.tier, recipient = subPageInfo.recipient
                                  ,autoRenew = subPageInfo.autoRenew, giftFriendSearch = subPageInfo.giftFriendSearch
                                  ,numberOfRandomGiftSubs = subPageInfo.numberOfRandomGiftSubs
@@ -636,7 +627,7 @@ subscribeMainBoxPage subPageInfo model homePageInfo back =
 subscribe2MainBoxPage : Subscribe2Record -> Model -> HomePageInfo -> Bool -> Element Msg
 subscribe2MainBoxPage subPageInfo model homePageInfo back =
   let colorPalette = currentColorPalette model
-      setSubscribe = HomePageMsg << UpdateSubPage << HomeSubPageSubscribe2
+      setSubscribe = Msg << HomePageMsg << UpdateSubPage << HomeSubPageSubscribe2
   in mainBoxPageWrapper model <| co
        [width fill, height fill, spacing 24
        ,Ft.size 16, Ft.bold, noSelection]
@@ -709,7 +700,7 @@ subscribe2MainBoxPage subPageInfo model homePageInfo back =
                 ,mouseOver [Ft.color colorPalette.bgMain
                            ,Bg.color colorPalette.highlightBlue
                            ,Bdr.color colorPalette.highlightBlue]
-                ,Evt.onClick <| HomePageMsg <| POSTSubscription subPageInfo]
+                ,Evt.onClick <| Msg <| HomePageMsg <| POSTSubscription subPageInfo]
                 ++ buttonStyle
                 ++ colorTransitionStyle) <|
             ex [centerX] "Confirm"
@@ -849,7 +840,7 @@ userAgreementCondition model =
      ,ex [Ft.color colorPalette.highlightBlue
         ,mouseOver [Ft.color colorPalette.highlightBlueBright]
         ,pointer
-        ,Evt.onClick <| HomePageMsg <| AppendSubPage HomeSubPageAgreement]
+        ,Evt.onClick <| Msg <| HomePageMsg <| AppendSubPage HomeSubPageAgreement]
         "user agreement"]
 
 paypalCondition model =

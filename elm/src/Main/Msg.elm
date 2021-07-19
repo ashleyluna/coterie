@@ -31,15 +31,29 @@ type alias UpdateElement msg a =
 
 
 
-
-type Msg
+type GeneralMsg msg
   = NoMsg
-  | LogMessage String
-  | BatchMsgs (List Msg)
+  | BatchMsgs (List (GeneralMsg msg))
   | MsgCmd (Cmd Msg)
-  | WaitHalfASec Msg
-  | UseNow (Posix -> Msg)
-  | SetZone Time.Zone -- this should only be used at initialization
+  | GlobalMsg Msg
+  | UseNow (Posix -> GeneralMsg msg)
+  | Wait Float (GeneralMsg msg)
+  | LogMessage String
+  | Msg msg
+
+type alias GeneralMsgUpdate msg
+   = Model -> msg -> (msg -> Msg)
+  -> (Model, Cmd Msg)
+
+type alias Msg = GeneralMsg Msg_
+
+type Msg_
+  = --NoMsg
+--  |
+--  | BatchMsgs (List Msg)
+--  | MsgCmd (Cmd Msg)
+--  | WaitHalfASec Msg
+  SetZone Time.Zone -- this should only be used at initialization
   | GetCookie
   | ReceiveCookie String
   | SetUpProfile
@@ -144,11 +158,11 @@ type HomePageMsg =
 
 type ChatPageMsg = ChatPageChatBoxMsg ChatBoxMsg
 
-type ChatStreamPageMsg = ChatStreamPageMessageRoomMsg MessageRoomMsg
+type ChatStreamPageMsg = ChatStreamPageMessageBoxMsg MessageBoxMsg
 
 type StreamerPageMsg = StreamerPageChatBoxMsg ChatBoxMsg
                      | StreamerPageModRoomMsg ChatRoomMsg
-                     | StreamerPageMentionMessageRoomMsg MessageRoomMsg
+                     | StreamerPageMentionMessageBoxMsg MessageBoxMsg
 
                      | OverStreamerPage (StreamerPageInfo -> StreamerPageInfo)
                      | StreamStatusSetter (Maybe Bool)
@@ -157,11 +171,14 @@ type StreamerPageMsg = StreamerPageChatBoxMsg ChatBoxMsg
 --------------------------------------------------------------------------------
 -- ChatBox Segments
 
-type ChatBoxMsg = MsgChatBoxMsg Msg
-                | BatchChatBoxMsgs (List ChatBoxMsg)
-                | WaitHalfASecChatBox ChatBoxMsg
+type alias ChatBoxMsg = GeneralMsg ChatBoxMsg_
 
-                | SetChatBoxOverlay ChatBoxOverlay
+type ChatBoxMsg_ = --MsgChatBoxMsg Msg
+              --  | BatchChatBoxMsgs (List ChatBoxMsg)
+              --  | WaitHalfASecChatBox ChatBoxMsg
+
+               -- |
+                  SetChatBoxOverlay ChatBoxOverlay
                 | UpdateChatBoxOverlay ChatBoxOverlay
                 | OverSettingsOverlay (SettingsOverlayRecord -> SettingsOverlayRecord)
                 | OverCommunityOverlay (CommunityOverlayRecord -> CommunityOverlayRecord)
@@ -188,13 +205,16 @@ type ChatBoxMsg = MsgChatBoxMsg Msg
                 | POSTSetNameColor ChromaColorRecord ChromaColorRecord ChromaMode
                -- | POSTSetMode ChromaMode
 
-               | ChatBoxElmBarMsg ElmBarMsg
+               | ChatBoxElmBarMsg (ElmBarMsg ChatBoxMsg)
                | ChatBoxTriggerAutoScrollDown String
 
-type ChatRoomMsg = MsgChatRoomMsg Msg
-                 | BatchChatRoomMsgs (List ChatRoomMsg)
-                 | UserChatRoomMsgNow (Posix -> ChatRoomMsg)
-                 | MessageRoomMsg MessageRoomMsg
+type alias ChatRoomMsg = GeneralMsg ChatRoomMsg_
+
+type ChatRoomMsg_ = --MsgChatRoomMsg Msg
+                -- | BatchChatRoomMsgs (List ChatRoomMsg)
+                -- |
+                   UserChatRoomMsgNow (Posix -> ChatRoomMsg)
+                 | MessageBoxMsg MessageBoxMsg
                  | SetChatRoomOverlay ChatRoomOverlay
                  | UpdateChatRoomOverlay ChatRoomOverlay
                  | SetChatRoom ChatRoom
@@ -204,20 +224,34 @@ type ChatRoomMsg = MsgChatRoomMsg Msg
                  | AddEmoteChatRoomInput String
                  | SendUserMessage ChatLocale String Int
 
-type MessageRoomMsg = MsgMessageRoomMsg Msg
-                    | BatchMessageRoomMsgs (List MessageRoomMsg)
-                    | MessageRoomElmBarMsg ElmBarMsg
-                    | NoHighlights
-                    | SetHighlightedUserFocus String Int
-                   -- | GetUserBarViewport String (Viewport -> MessageRoomMsg)
-                    | SetUserBarMargin Float
-                    | UpdateHighlightUsersList String String
-                    | AddHighlightedUserInfo String HighlightedUserInfo
-                    | POSTRequestUserMessages String (Maybe Int)
-                    --| Set
-                    | SetHoverUsername Bool
-                   -- auto scroll stuff
+type alias MessageBoxMsg = GeneralMsg MessageBoxMsg_
 
+type MessageBoxMsg_ = --MsgMessageBoxMsg Msg
+                  -- | BatchMessageBoxMsgs (List MessageBoxMsg)
+                  -- |
+                     OverMessageBox (MessageBox -> MessageBox)
+                   | MessageBoxElmBarMsg (ElmBarMsg MessageBoxMsg)
+                   | HighlightBoxElmBarMsg (ElmBarMsg MessageBoxMsg)
+                   | SetHoverUsername Bool
+
+
+
+                   | CloseHighlightBox
+                   | SwitchHighlightUser String String
+                   | SetHighlightedUserSelected String Int
+                   | SetUserBarMargin Float
+                   | POSTBanUser String
+                   | POSTCensorUser String Int
+
+                   | OpenTray Int
+                   | CloseTray
+                   | UpdateHighlightUsersList String String
+                   | AddHighlightedUserInfo String HighlightedUserInfo
+                   | OnScrollHighlightedMessages TrayRecord Viewport MessageBoxMsg MessageBoxMsg
+                   | POSTRequestUserMessageHistory (Result (List String) (Bool, List (String, Int)))
+                   | AddHighlightedUsersMessages Bool (List (String, Bool, List HighlightedMessageRecord))
+                   --| Set
+                  -- auto scroll stuff
 
 
 
@@ -245,15 +279,17 @@ type ChatLocale
 
 
 
+type alias ElmBarMsg msg = GeneralMsg (ElmBarMsg_ msg)
 
-type ElmBarMsg = BatchElmBarMsgs (List ElmBarMsg)
-               | GetElmBarViewport String (String -> Viewport -> ElmBarMsg)
-               | SetElmBarViewPort Viewport
-               | OnScroll String Viewport
-               | ResetScrollStack
-               | AutoScrollDown Bool String Viewport
-               | ElmBarWait ElmBarMsg
-              -- | ElmBarMsg msg
+type ElmBarMsg_ msg
+  = GetElmBarViewport String (Viewport -> msg)
+  | SetElmBarViewPort Viewport
+  | UpdateAutoScroll Viewport
+  --| OnScroll String Viewport
+  --| ResetScrollStack
+  | AutoScrollDown Bool String Viewport
 
+getViewportAndAutoScroll wrapper name = wrapper <|
+  Msg <| GetElmBarViewport name (Msg << wrapper << Msg << AutoScrollDown False name)
 
 --type Viewport a = GetViewport String (String -> Viewport -> a)

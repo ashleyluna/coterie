@@ -23,8 +23,8 @@ import qualified Database.Persist
 import Import
 import qualified Model as DB
 
-import Internal.Api
-import Internal.User
+import Postfoundation.Api
+import Prefoundation
 
 
 
@@ -33,9 +33,8 @@ renderElmApp = do
   App {..} <- getYesod
   let Secrets {..} = streamerSecrets
   flags <- mkFlags
-  streamStatus <- toJSON <$> readTVarIO tvStreamStatus
-  pc <- widgetToPageContent $ wBodyScript flags streamStatus streamerInfo
-  withUrlRenderer $ [hamlet|
+  pc <- widgetToPageContent $ wBodyScript flags streamerInfo
+  withUrlRenderer [hamlet|
       $doctype 5
       <html>
         <head>
@@ -78,10 +77,11 @@ mkFlags :: Handler Value
 mkFlags = do
   App {..} <- getYesod
   let StreamerInfo {..} = streamerInfo
-  specialRoles <- do specialRoles <- readTVarIO tvSpecialRoles
-                     return $ HashMap.fromListWith max
-                            $ (\(SpecialRole name power) -> (name, power))
-                          <$> HashMap.elems specialRoles
+  specialRoles <- do
+    specialRoles <- readTVarIO tvSpecialRoles >>= \specialRoleTVars ->
+      HashMap.elems specialRoleTVars `for` readTVarIO
+    return $ HashMap.fromListWith max
+           $ specialRoles <&> \(SpecialRole _ name power _) -> (name, power)
 
 
   specialRoleBadges <- HashMap.elems <$> readTVarIO tvSpecialRoleBadges
@@ -103,13 +103,6 @@ mkFlags = do
       ]
     ]
 
---mkLiveInfo :: StreamStatus -> Value
---mkLiveInfo streamStatus {-usersInChat-} = object
---  ["streamStatus" .= toJSON streamStatus
---  ,"usersInChat" .= object [] -- toJSON usersInChat
---  ]
-
-
 
 
 --------------------------------------------------------------------------------
@@ -120,7 +113,7 @@ mkFlags = do
 
 
 
-wBodyScript flags streamStatus streamerInfo = toWidgetBody $ [julius|
+wBodyScript flags streamerInfo = toWidgetBody $ [julius|
 var settingsData = localStorage.getItem("settings")
 ;
 var settings = settingsData ? JSON.parse(settingsData) : null

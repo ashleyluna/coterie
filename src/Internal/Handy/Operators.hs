@@ -1,123 +1,33 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Internal.Handy.Operators where
 
-import ClassyPrelude.Yesod
-
-import Control.Monad
+import ClassyPrelude.Yesod hiding ((<&&>))
 
 
 
 
 -- "faster" version of $
 infixr 8 ¢
-(¢) f a = f a
+(¢) :: (t1 -> t2) -> t1 -> t2
+(¢) f = f
 
+infixl 4 <$$>
+(<$$>) :: (Functor f1, Functor f2) => (a -> b) -> f1 (f2 a) -> f1 (f2 b)
+(<$$>) f = fmap $ fmap f --fmap fmap fmap
 
---infixr 7 <.>
---(<.>) :: Functor f => (b -> c) -> f (a -> b) -> f (a -> c)
---(<$.>) f = fmap ((.) f)
---
---infixr 7 <<.>>
---(<<.>>) :: Functor f => (b -> c) -> f (g (a -> b)) -> f (g (a -> c))
---(<<.>>) = fmap . (<.>)
+infixl 1 <&&>
+(<&&>) :: (Functor f1, Functor f2) => f1 (f2 a) -> (a -> b) -> f1 (f2 b)
+(<&&>) a f = f <$$> a
 
+--(<$$$>) :: (Functor f1, Functor f2, Functor f3) => (a -> b) -> f1 (f2 (f3 a)) -> f1 (f2 (f3 b))
+--(<$$$>) = fmap fmap fmap fmap fmap fmap fmap fmap fmap fmap fmap fmap
 
-
-
-
---------------------------------------------------------------------------------
--- Join + SequenceA
-
--- (>>=) m f = join $ fmap f m
--- traverse f m = sequenceA $ fmap f m
-
-
-
-
-infixl 2 $>>=
-infixl 2 =<<$
-($>>=) :: (Monad m, Traversable t) => t (m a) -> (a -> m b) -> m (t b)
-($>>=) m f = traverse (>>= f) m
-(=<<$) f m = m $>>= f
-
-infixl 2 >$>=
-infixl 2 =<$<
-(>$>=) :: (Monad m, Traversable t) => m (t a) -> (a -> m b) -> m (t b)
-(>$>=) m f = m >>= traverse f
-(=<$<) f m = m >$>= f
-
-infixl 2 >>$=
-infixl 2 =$<<
-(>>$=) :: (Monad m, Traversable t) => m a -> (a -> t (m b)) -> m (t b)
-(>>$=) m f = m >>= sequenceA . f
-(=$<<) f m = m >>$= f
-
-{-
-(>>=$) :: (Monad m, Traversable t) => m a -> (a -> m (t b)) -> m (t b)
-this is the same as (>>=)
--}
-
-
-
-
-
-
-
-
-infix 2 *>>=
-infix 2 =<<*
-(*>>=) :: (Functor f, Monad t, Traversable t) => f (t a) -> (a -> t b) -> f (t b)
-(*>>=) m f = fmap (join . traverse f) m
-(=<<*) f m = m *>>= f
-
-infix 2 >*>=
-infix 2 =<*<
-(>*>=) :: (Applicative f, Monad t, Traversable t) => t (f a) -> (a -> t b) -> f (t b)
-(>*>=) m f = fmap (>>= f) $ sequenceA m
-(=<*<) f m = m >*>= f
-
-infix 2 >>*=
-infix 2 =*<<
-(>>*=) :: (Applicative f, Monad t, Traversable t) => t a -> (a -> f (t b)) -> f (t b)
-(>>*=) m f = fmap join $ traverse f m
-(=*<<) f m = m >>*= f
-
-infix 2 >>=*
-infix 2 *=<<
-(>>=*) :: (Applicative f, Monad t, Traversable t) => t a -> (a -> t (f b)) -> f (t b)
-(>>=*) m f = sequenceA $ m >>= f
-(*=<<) f m = m >>=* f
-
-
-
-
-
-
-
-
-infixl 2 >>==
-infixl 2 ==<<
-(>>==) :: (Monad m, Monad t, Traversable t) => m (t a) -> (a -> m (t b)) -> m (t b)
-(>>==) m f = m >>= \t -> t >>*= f
-(==<<) f m = m >>== f
-
---infixl 2
---infixl 2
---() :: (Monad m, Monad t, Traversable t) => t (m a) -> (a -> m (t b)) -> m (t b)
---() t f = t >>*= \m -> m >>= f
---() f m = m _ f
-
---infixl 2
---infixl 2
---() :: (Monad m, Monad t, Traversable t) => m (t a) -> (a -> t (m b)) -> m (t b)
---() m f = m >>= \t -> t >>=* f
---() f m = m _ f
-
---infixl 2
---infixl 2
---() :: (Monad t1, Monad t2, Traversable t1, Traversable t2) => t1 (t2 a) -> (a -> t1 (t2 b)) -> t2 (t1 b)
---() m f = m >>=* \t -> t >>*= f
---() f m = m _ f
+--infixl 1 ??
+--(??) :: Functor f => f (a -> b) -> a -> f b
+--f ?? a = fmap ($ a) f

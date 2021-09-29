@@ -27,7 +27,8 @@ import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict as Map
 import Database.Persist.Sqlite
   (createSqlitePool, runSqlPool, sqlDatabase, sqlPoolSize)
-import Import
+import qualified Database.Esqueleto.Experimental as E
+import qualified Database.Persist.Sql as P
 import Language.Haskell.TH.Syntax (qLocation)
 import Network.HTTP.Client.TLS (getGlobalManager)
 import Network.Wai (Middleware)
@@ -48,26 +49,8 @@ import Handler.Pages
 import Handler.WS
 import Handler.Api
 
-import Internal.Global
-import Internal.Handy.NoFoundation
-import Internal.Images
-import Internal.Process.StreamStatus
-import Internal.User
-import Internal.WSRR
-
-import Internal.TestSuite
-
-
--- for testing only
-data DefaultStaticInfo = DefaultStaticInfo
-  {specialRoles      :: HashMap Int64 SpecialRole
-  ,specialRoleBadges :: HashMap Text Emote
-  ,subBadges         :: [Map Word SubBadge]
-  ,seasonBadges      :: [Emote]
-  ,commonBadges      :: HashMap Text Emote
-  ,globalEmoteList   :: HashMap Text Emote
-  ,subOnlyEmoteList  :: HashMap Text Emote
-  }
+import Global
+import Prefoundation
 
 
 -- This line actually creates our YesodDispatch instance. It is the second half
@@ -89,7 +72,7 @@ makeFoundation appSettings = do
         (if appMutableStatic appSettings then staticDevel else static)
         (appStaticDir appSettings)
 
-    -- Main
+    -- WS
     tqGlobalEvents <- newTQueueIO
     tvWSConns <- newTVarIO HashMap.empty
     tvUserConns <- newTVarIO HashMap.empty
@@ -97,18 +80,23 @@ makeFoundation appSettings = do
 
     -- Main
     tvMainChat <- newTVarIO IntMap.empty
+    tvMainChatDelayed <- newTVarIO IntMap.empty
     tvStreamStatus <- newTVarIO Offline
     -- shoutOutBox
 
     -- Moderation
+    tvMuteList <- newTVarIO IntMap.empty
     tvModChat <- newTVarIO IntMap.empty
 
-    --tvCreators <- newTVarIO HashMap.empty
+    -- Database
+    tvUsers <- newTVarIO HashMap.empty
+
+    tvCreators <- newTVarIO HashMap.empty
 
     -- Images
     tvSpecialRoles <- newTVarIO HashMap.empty
     tvSpecialRoleBadges <- newTVarIO HashMap.empty
-    tvSubBadges <- newTVarIO IntMap.empty
+    tvSubBadges <- newTVarIO []
     tvSeasonBadges <- newTVarIO []
     tvCommonBadges <- newTVarIO HashMap.empty
     tvGlobalEmoteList <- newTVarIO HashMap.empty
@@ -116,13 +104,12 @@ makeFoundation appSettings = do
 
       -- Payment
     tvSubscriptions <- newTVarIO HashMap.empty
-
     -- We need a log function to create a connection pool. We need a connection
     -- pool to create our foundation. And we need our foundation to get a
     -- logging function. To get out of this loop, we initially create a
     -- temporary foundation without a real connection pool, get a log function
     -- from there, and then create the real foundation.
-    let mkFoundation appConnPool = App {..}
+    let mkFoundation appConnPool = App{..}
         tempFoundation = mkFoundation $ error "connPool forced in tempFoundation"
         logFunc = messageLoggerSource tempFoundation appLogger
 
@@ -136,15 +123,7 @@ makeFoundation appSettings = do
 
     let foundation = mkFoundation pool
 
-    -- Processes
-    globalEvents foundation
-    streamStatusEventTimer foundation
-    streamStatistics foundation
-
-    testSuite foundation
-    --streamStatusProcess streamerInfo
-    --                    tchanStreamStatus
-    --                    tvarStreamStatus
+    global foundation
     -- Return the foundation
     return foundation
 

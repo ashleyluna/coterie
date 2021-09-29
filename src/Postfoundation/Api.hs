@@ -2,8 +2,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module Internal.Api where
+module Postfoundation.Api where
 
 import qualified Data.HashMap.Strict as HashMap
 import qualified Data.HashSet as HashSet
@@ -13,19 +14,18 @@ import Database.Persist.Sql as P
 import Import
 import qualified Model as DB
 
-import Internal.User
+import Prefoundation
 
-getUser :: Text -> Handler (Maybe (Entity DB.User))
-getUser = runDB . P.getBy . DB.UniqueUsername
 
 getSub :: Key DB.User -> Handler (Maybe (Entity DB.ActiveSub))
 getSub = runDB . P.getBy . DB.UniqueSubber
 
-apiIfLoggedIn :: Cont (Handler Value) User
+apiIfLoggedIn :: (TVUser -> User -> Handler Value) -> Handler Value
 apiIfLoggedIn f = currentUser >>= \case
   Nothing -> jsonError "Not Logged In"
-  Just user -> f user
+  Just (tvUser, user) -> f tvUser user
 
+apiIfNoProfanity :: p -> Handler Value -> Handler Value
 apiIfNoProfanity str m =
   if False then jsonError "Profanity"
      else m
@@ -39,16 +39,12 @@ apiIfNoProfanity str m =
 
 
 
-currentUser :: Handler (Maybe User)
-currentUser = do
-  maybeAuth >$>= fromUserDB
 
-findUser :: Text -> Handler (Maybe User)
-findUser username = runDB (P.getBy $ DB.UniqueUsername username) >$>= fromUserDB
+{-
 
-fromUserDB :: Entity DB.User -> Handler User
-fromUserDB userEntity@(Entity userKey user@(DB.User {..})) = do
-  App {..} <- getYesod
+fromUserDB_ :: Entity DB.User -> Handler User
+fromUserDB_ userEntity@(Entity userKey user@(DB.User {..})) = do
+  app@App{..} <- getYesod
   let userId = E.fromSqlKey userKey
       accountInfo = AccountInfo userCreationTime userEmail
                                 userLastNameChangeTime userNumMonthsSubbed
@@ -73,9 +69,9 @@ fromUserDB userEntity@(Entity userKey user@(DB.User {..})) = do
     Just color -> return $ Right color
     _ -> Left <$> randomDefaultColor userCreationTime
   specialRoles <- liftIO $ readTVarIO tvSpecialRoles
-  role <- case E.fromSqlKey <$> userRole >>= flip HashMap.lookup specialRoles of
+  role <- case userRole >>= flip HashMap.lookup specialRoles . E.fromSqlKey of
     Just specialRole -> return $ Right specialRole
-    _ -> liftIO $ Left . Chatter userNumMonthsSubbed <$>
+    _ -> liftIO $ (Left . Chatter userNumMonthsSubbed) .
                   -- check if user has a subscription
                   HashMap.lookup userId <$> readTVarIO tvSubscriptions
   let nameColor = NameColor defaultNameColor
@@ -83,8 +79,9 @@ fromUserDB userEntity@(Entity userKey user@(DB.User {..})) = do
                             maybeRight
                           $ fromMaybe LRGB $ readMay userColorMode
   creatorInfo <- HashMap.lookup userId <$> readTVarIO tvCreators
-  moderation <- UserModeration <$> return 0
+  moderation <- UserModeration <$> return userMeaningfulMessages
                                <*> return 0
+                               <*> return False
   return $ User userId
                 accountInfo
                 creatorInfo
@@ -96,11 +93,11 @@ fromUserDB userEntity@(Entity userKey user@(DB.User {..})) = do
                 nameColor
                 -- points
 
-
+-}
 
 
 fromRoleDB :: Entity DB.Role -> SpecialRole
-fromRoleDB (Entity _ (DB.Role {..})) = SpecialRole roleName rolePower
+fromRoleDB (Entity key DB.Role {..}) = SpecialRole (fromSqlKey key) roleName rolePower roleOrder
 
 
 --------------------------------------------------------------------------------

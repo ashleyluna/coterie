@@ -1,10 +1,12 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Foundation where
 
 import Control.Concurrent
 import Control.Monad.Logger (LogSource)
+import Control.Lens hiding ((.=))
 import Control.Monad.Trans.Maybe
 import qualified Data.CaseInsensitive as CI
 import Data.HashMap.Strict as HashMap
@@ -15,6 +17,13 @@ import qualified Data.Text.Encoding as TE
 import qualified Database.Esqueleto.Experimental as E
 import qualified Database.Persist
 import Database.Persist.Sql
+    ( Entity(Entity),
+      PersistStoreRead(get),
+      PersistUniqueRead(getBy),
+      SqlPersistT,
+      SqlBackend,
+      runSqlPool,
+      ConnectionPool )
 import Database.Persist.Types
 import Text.Hamlet          (hamletFile)
 import Text.Jasmine         (minifym)
@@ -32,8 +41,7 @@ import Import.NoFoundation
 import qualified Model as DB
 import Streamer
 
-import Internal.WS
-import Internal.User
+import Prefoundation
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
@@ -45,29 +53,34 @@ data App = App
   , appConnPool           :: ConnectionPool -- ^ Database connection pool.
   , appHttpManager        :: Manager
   , appLogger             :: Logger
-
+  ------------------------------------------------------------------------------
+  -- Web Socket Connections
   -- write global events
-  , tqGlobalEvents        :: TQueue GlobalEvent
+  , tqGlobalEvents        :: TQueue GlobalEvent --GlobalEvent
   -- ws connections read global events with a custom pubsub
-  , tvWSConns             :: TVHashMap Int (GESub,TQueue GlobalEvent)
+  , tvWSConns             :: TVHashMap WSConnId (GESub,TQueue PValue)
   -- for multiple ws connections logged in as the same user
-  , tvUserConns           :: TVHashMap Int64 (TVar User, HashMap Int (TQueue Notification))
-
+  , tvUserConns           :: TVHash64Map (TVUser, HashMap Int (TQueue Notification))
+  ------------------------------------------------------------------------------
   -- Main
   , tvMainChat            :: TVIntMap UserMessage -- timeStamp
   , tvMainChatDelayed     :: TVIntMap UserMessage
   , tvStreamStatus        :: TVar StreamStatus
   --, tvShoutOutBox  :: TVar ShoutOutBox
   --, tvSubGiftersLeaderBoard
-
+  ------------------------------------------------------------------------------
   -- Moderation
+  , tvMuteList            :: TVIntMap Int -- userId, timeStamp (end of mute)
   , tvModChat             :: TVIntMap UserMessage -- timeStamp
   --, tvModerationHistory :: TIntMap ModAction -- timeStamp
+  ------------------------------------------------------------------------------
+  -- Database in memeory
+  , tvUsers               :: TVHash64MapTV User
 
-  , tvCreators            :: TVHashMap Int64 Creator -- userId
+  , tvCreators            :: TVHash64MapTV Creator -- userId
 
   -- Images --Stand In For Database
-  , tvSpecialRoles        :: TVHashMap Int64 SpecialRole
+  , tvSpecialRoles        :: TVHash64MapTV SpecialRole
   , tvSpecialRoleBadges   :: TVHashMap Text Emote
   , tvSubBadges           :: TVar [IntMap SubBadge]
   , tvSeasonBadges        :: TVar [Emote]
@@ -79,6 +92,7 @@ data App = App
   -- Payment
   , tvSubscriptions       :: TVHashMap Int64 Subscription -- userId
   }
+
 
 
 -- This is where we define all of the routes in our application. For a full
@@ -127,18 +141,20 @@ instance Yesod App where
     -- To add it, chain it together with the defaultMiddleware: yesodMiddleware = defaultYesodMiddleware . defaultCsrfMiddleware
     -- For details, see the CSRF documentation in the Yesod.Core.Handler module of the yesod-core package.
     yesodMiddleware :: ToTypedContent res => Handler res -> Handler res
-    yesodMiddleware =
-      let myCsrfSetCookieMiddleware = (>>) $ setCsrfCookieWithCookie
-            defaultSetCookie {setCookieName = "csrftoken"
-                             ,setCookiePath = Just "/"}
-          myCsrfCheckMiddleware handler = csrfCheckMiddleware handler
-            (getCurrentRoute >>= maybe (return False) isWriteRequest)
-            "X-CSRFTOKEN"
-            "_token"
-      in defaultYesodMiddleware
-       . sslOnlyMiddleware sessionTimeOut
-       . myCsrfSetCookieMiddleware
-       . myCsrfCheckMiddleware
+    yesodMiddleware = defaultYesodMiddleware
+                    . sslOnlyMiddleware sessionTimeOut
+                    . defaultCsrfMiddleware
+      --let myCsrfSetCookieMiddleware = (>>) $ setCsrfCookieWithCookie
+      --      defaultSetCookie {setCookieName = "csrftoken"
+      --                       ,setCookiePath = Just "/"}
+      --    myCsrfCheckMiddleware handler = csrfCheckMiddleware handler
+      --      (getCurrentRoute >>= maybe (return False) isWriteRequest)
+      --      "X-CSRFTOKEN"
+      --      "_token"
+      --in defaultYesodMiddleware
+      -- . sslOnlyMiddleware sessionTimeOut
+      -- . myCsrfSetCookieMiddleware
+      -- . myCsrfCheckMiddleware
 
     --defaultLayout :: Widget -> Handler Html
     --defaultLayout widget = do
@@ -157,12 +173,11 @@ instance Yesod App where
       let isAdmin :: Int -> Handler AuthResult
           isAdmin reqPower = maybeAuth >>= \case
             Nothing -> return AuthenticationRequired
-            Just (Entity _ (DB.User {..})) ->
-              userRole >>*= runDB . get >>= \case
-                Just (DB.Role {..}) | rolePower >= reqPower -> return Authorized
+            Just (Entity _ DB.User {..}) ->
+              userRole ->== runDB . get >>= \case
+                Just DB.Role {..} | rolePower >= reqPower -> return Authorized
                 _ -> return $ Unauthorized "Your power level isn't high enough"
       in case (route, writable) of
-           --(AdminR, _) = isAdmin 2
            (AdminPageR, _) -> isAdmin 2
            (StreamerPageR, _) -> isAdmin 2
            (ModPageR, _) -> isAdmin 1
@@ -247,14 +262,14 @@ instance YesodAuth App where
                  => Creds App -> m (AuthenticationResult App)
     authenticate creds = liftHandler $ do
       let plugin = case credsPlugin creds of
-            "twitch" -> Just DB.UniqueTwitchId
-            "google" -> Just DB.UniqueGoogleId
+            "twitch" -> Just TwitchAuth
+            "google" -> Just GoogleAuth
             _ -> Nothing
       case plugin of
         Nothing -> return $ ServerError "Invalid plugin"
         Just plugin -> runDB $ do
           let cID = credsIdent creds
-          maybeUser <- getBy $ plugin $ Just cID
+          maybeUser <- getByUserAuth plugin cID
           return $ case maybeUser of
             Just (Entity uID _) -> Authenticated uID
             _ -> UserError $ IdentifierNotFound cID
@@ -280,6 +295,15 @@ isAuthenticated = do
     return $ case muid of
         Nothing -> Unauthorized "You must login to access this page"
         Just _ -> Authorized
+
+data UserAuth = TwitchAuth
+              | GoogleAuth
+
+getByUserAuth plugin pluginId = case plugin of
+  TwitchAuth -> getBy (DB.UniqueTwitchId pluginId) >>== \(Entity key _) ->
+    getBy $ DB.UniqueTwitchAuth $ Just key
+  GoogleAuth -> getBy (DB.UniqueGoogleId pluginId) >>== \(Entity key _) ->
+    getBy $ DB.UniqueGoogleAuth $ Just key
 
 instance YesodAuthPersist App
 

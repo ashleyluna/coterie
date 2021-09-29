@@ -10,6 +10,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 
 module Handler.Api.Register
@@ -46,10 +48,10 @@ import Network.HTTP.Simple as SHttp
 import Web.Cookie
 
 
-import Internal.Api
+import Postfoundation
 import Internal.StreamerInfo
 import Internal.Twitch
-import Internal.User
+import Prefoundation
 
 
 -- check username
@@ -111,7 +113,7 @@ instance FromJSON CheckRequest where
 getRegTwitchR :: Handler ()
 getRegTwitchR = do
   let Secrets {..} = streamerSecrets
-  void $ lookupGetParam "code" >$>= \code -> do
+  void $ lookupGetParam "code" >>=- \code -> do
     renderUrl <- getUrlRender
     -- get auth tokens
     response <- SHttp.httpJSONEither $ setRequestQueryString
@@ -126,8 +128,8 @@ getRegTwitchR = do
                    showTwitchResponseError response
       Right tokens -> getTwitchUserFull tokens >>= \case -- get twitch account info
         Nothing -> putStrLn "ERROR getRegTwitchR: idk why this failed"
-        Just (TwitchAuthInfo (TwitchTokens {..}) (TwitchAccount {..})
-             ,TwitchUser {..}, maybeTwitchFollowedAt, maybeTwitchSub) -> do
+        Just (TwitchAuthInfo TwitchTokens{..} TwitchAccount{..}
+             ,TwitchUser {..}, twitchFollowedAt, maybeTwitchSub) -> do
           let setTwitchCreds = setCreds True $ Creds "twitch" twitchId []
               --seasonBadges = flip (maybe "") maybeTwitchFollowedAt $ \followedAt ->
               --  unwords $ Maybe.catMaybes $ flip intmap $ \int seasonEndTime ->
@@ -138,23 +140,24 @@ getRegTwitchR = do
                 user <- P.get userId
                 let season = fromMaybe (List.length $ seasonEndTimes streamerInfo) $ do
                       oldSeason <- DB.userSeason <$> user
-                      twitchFollowTime <- maybeTwitchFollowedAt
-                      return $ min oldSeason $ assignSeason twitchFollowTime
+                      return $ min oldSeason $ assignSeason twitchFollowedAt
                 P.update userId
                   [DB.UserSeason             =. season
-                  ,DB.UserTwitchAccessToken  =. Just accessToken
-                  ,DB.UserTwitchRefreshToken =. Just refreshToken
-                  ,DB.UserTwitchId           =. Just twitchId
-                  ,DB.UserTwitchLogin        =. Just twitchLogin
-                  ,DB.UserTwitchEmail        =. Just twitchEmail
-                  ,DB.UserTwitchCreated      =. rfc3339ToPOSIXSeconds createdAt
-                  ,DB.UserTwitchFollowTime   =. maybeTwitchFollowedAt
-                  ,DB.UserTwitchIsSubscriber =. maybeTwitchSub
                   --,UserBadgeCollection    =. seasonBadges
+                  ]
+                (DB.userTwitchAuth =<< user) `for_` flip P.update 
+                  [DB.TwitchAuthAccessToken  =. accessToken
+                  ,DB.TwitchAuthRefreshToken =. refreshToken
+                  ,DB.TwitchAuthUserId       =. twitchId
+                  ,DB.TwitchAuthLogin        =. twitchLogin
+                  ,DB.TwitchAuthEmail        =. twitchEmail
+                  ,DB.TwitchAuthCreatedTime  =. createdAt
+                  ,DB.TwitchAuthFollowTime   =. twitchFollowedAt
+                  ,DB.TwitchAuthIsSubscriber =. maybeTwitchSub
                   ]
           -- get current user and account associated with twitch info
           maybeUserId <- maybeAuthId
-          maybeUser <- runDB $ getBy $ DB.UniqueTwitchId $ Just twitchId
+          maybeUser <- runDB $ getByUserAuth TwitchAuth twitchId
           case (maybeUserId, maybeUser) of
             -- logged in, twitch account in use
             -- whether its same connected account, or different,
@@ -172,19 +175,24 @@ getRegTwitchR = do
             -- not logged in, twitch account not used
             -- make new account
             (Nothing, Nothing) -> void $
-              lookupCookie "requestedUsername" >$>= \requestedUsername -> do
+              lookupCookie "requestedUsername" >>=- \requestedUsername -> do
                 delReqCookie
                 newUserDB <- newUserDB twitchEmail requestedUsername
-                runDB $ P.insert newUserDB
-                  {DB.userTwitchAccessToken     = Just accessToken
-                  ,DB.userTwitchRefreshToken    = Just refreshToken
-                  ,DB.userTwitchId              = Just twitchId
-                  ,DB.userTwitchLogin           = Just twitchLogin
-                  ,DB.userTwitchEmail           = Just twitchEmail
-                  ,DB.userTwitchCreated         = rfc3339ToPOSIXSeconds createdAt
-                  ,DB.userTwitchFollowTime      = maybeTwitchFollowedAt
-                  ,DB.userTwitchIsSubscriber    = maybeTwitchSub
-                  }
+                let newTwitchAuth = DB.TwitchAuth
+                      {DB.twitchAuthAccessToken     = accessToken
+                      ,DB.twitchAuthRefreshToken    = refreshToken
+                      ,DB.twitchAuthUserId          = twitchId
+                      ,DB.twitchAuthLogin           = twitchLogin
+                      ,DB.twitchAuthEmail           = twitchEmail
+                      ,DB.twitchAuthCreatedTime     = createdAt
+                      ,DB.twitchAuthFollowTime      = twitchFollowedAt
+                      ,DB.twitchAuthIsSubscriber    = maybeTwitchSub
+                      }
+                runDB $ do
+                  twitchAuthKey <- P.insert newTwitchAuth
+                  P.insert newUserDB
+                    {DB.userTwitchAuth = Just twitchAuthKey}
+                  
                 setTwitchCreds
 
 
@@ -215,22 +223,41 @@ newUserDB email username = do
   let season = assignSeason $ creationTime `div` 1000000
   return $ DB.User
     -- Account
-   creationTime email creationTime 0 season
-   -- Twitch
-   Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
-   -- Google
-   Nothing
-   -- Profile
-   username Nothing Nothing 0
-   -- Badges
-   Nothing Nothing ""
-   -- Name Color
-   Nothing "LRGB"
-   -- Left
-   Nothing Nothing Nothing Nothing Nothing
-   -- Right
-   Nothing Nothing Nothing Nothing Nothing
-
+    {userCreationTime       = creationTime
+    ,userEmail              = email
+    ,userLastNameChangeTime = creationTime
+    ,userNumMonthsSubbed    = 0
+    ,userSeason             = season
+    -- Connections
+    ,userTwitchAuth = Nothing
+    ,userGoogleAuth = Nothing
+    -- Moderation
+    ,userMeaningfulMessages = 0
+    -- Profile
+    ,userUsername = username
+    ,userRole = Nothing
+    ,userPronouns = Nothing 
+    ,userPoints = 0
+    -- Badges
+    ,userFirstBadge = Nothing
+    ,userSecondBadge = Nothing
+    ,userBadgeCollection = ""
+    -- Name Color
+    ,userDefaultColor = Nothing
+    ,userColorMode = "LRGB"
+    -- Left
+    ,userColorLeftH   = Nothing
+    ,userColorLeftCL  = Nothing
+    ,userColorLeftCD  = Nothing
+    ,userColorLeftVL  = Nothing
+    ,userColorLeftVD  = Nothing
+    -- Right
+    ,userColorRightH  = Nothing
+    ,userColorRightCL = Nothing
+    ,userColorRightCD = Nothing
+    ,userColorRightVL = Nothing
+    ,userColorRightVD = Nothing
+   }
 
 
 delReqCookie = deleteCookie "requestedUsername" "/"

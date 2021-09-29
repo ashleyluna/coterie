@@ -27,5 +27,3 @@ import Database.Persist.Quasi
 share [mkPersist sqlSettings, mkMigrate "migrateAll"]
     $(persistFileWith lowerCaseSettings "config/models.persistentmodels")
 
-runDB_ :: MonadUnliftIO m => ConnectionPool -> SqlPersistT m a -> m a
-runDB_ = flip runSqlPool

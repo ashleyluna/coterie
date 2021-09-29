@@ -6,7 +6,7 @@
 /chat ChatPageR GET
 /chat/stream ChatStreamPageR GET
 /mod ModPageR GET !mod
-/streamer StreamerPageR GET !mod
+/streamer StreamerPageR GET !admin
 /admin AdminPageR GET !admin
 
 
@@ -25,6 +25,7 @@
     /twitch RegTwitchR GET
 --  /streamstatus StreamStatusR:
 --    /twitch StreamSTwitchR POST
+  /stream StreamR POST
   /subscribe SubscribeR:
     / MySubscribeR POST
     /check GiftSubCheckR POST

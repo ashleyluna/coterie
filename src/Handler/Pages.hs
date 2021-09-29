@@ -7,8 +7,6 @@
 {-# LANGUAGE RecordWildCards #-}
 module Handler.Pages where
 
-import Data.Text as Text
-
 import Import
 
 import Internal.RenderElmApp

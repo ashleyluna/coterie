@@ -8,6 +8,9 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE LambdaCase #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Handler.WS where
 
@@ -24,7 +27,6 @@ import Data.Aeson
 import Data.Aeson.Text
 import qualified Data.ByteString.Lazy.Internal as BS
 import Data.Function (fix)
-import Data.Maybe as Maybe
 import Data.Text as Text hiding (empty, foldr)
 import Data.Text.Lazy as TextL (toStrict)
 import qualified Network.WebSockets as Net
@@ -32,17 +34,18 @@ import UnliftIO.Async
 import Yesod.WebSockets
 
 
-import Internal.Api
-import Internal.WS
-import Internal.User
+import Postfoundation
+import Prefoundation
 
 import Streamer
+import UnliftIO (readTVarIO)
+import UnliftIO.STM (writeTVar)
 
 getWSR :: Handler ()
 getWSR = webSockets ws
 
 {-
-there are 4 stages to ws
+there are 3 stages to ws
 1: set up user connection
 2: main loop
 3: disconnection clean up
@@ -50,11 +53,11 @@ there are 4 stages to ws
 ws :: WebSocketsT Handler ()
 ws = do
   App {..} <- lift getYesod
-  currentUser <- lift currentUser
-  -- STAGE 1: setup user connection
-  let defaultGESub = GESub False False False
+  maybeCurrentUser <- lift currentUser
+  -- STAGE 1: setup user connection and tqueue for this ws connection
+  let defaultGESub = GESub False False False -- NOTE 1
   myConnId <- currentTime
-  (myTQGlobal, maybeUserConn) <- atomically $ do
+  (myTQGlobal, permissions, maybeLoggedIn) <- atomically $ do
     -- myTQGlobal receives all permited global events
     -- i.e. main chat messages, stream status updates, shout out box notifications
     -- permitted events are determined with GESub
@@ -62,95 +65,97 @@ ws = do
     modifyTVar' tvWSConns $ HashMap.insert myConnId (defaultGESub, myTQGlobal)
     -- if the user is logged in, maybetqNotifications receives personal notifications
     -- i.e. whispers, personal user updates
-    maybeUserConn <- currentUser `for` \currentUser@User {..} -> do
-      --modifyTVar' tvUsersInChat $ HashMap.insert _userId currentUser
-      writeTQueue tqGlobalEvents $ MainChat $ AddUser currentUser
-      tqNotifications <- newTQueue
-      userConns <- readTVar tvUserConns
-      (tvCurrentUser, newUserConns) <- getCompose $ (\f -> HashMap.alterF f _userId userConns) $ Compose . \case
-        Just currentUserConns@(tvCurrentUser, multiconns) -> do
-          return $ pair tvCurrentUser $
-            Just $ (tvCurrentUser, HashMap.insert myConnId tqNotifications multiconns)
-        _ -> do
-          tvCurrentUser <- newTVar currentUser
-          return $ pair tvCurrentUser $
-            Just (tvCurrentUser, HashMap.singleton myConnId tqNotifications)
-      writeTVar tvUserConns newUserConns
-      return (tvCurrentUser, tqNotifications)
-    return (myTQGlobal, maybeUserConn)
-  wsState@ WSState {..} <-
-    WSState <$> return myConnId
-            <*> newTVarIO defaultGESub
-            <*> return maybeUserConn
-            <*> (newTVarIO . flip subtract (2 * seconds) =<< currentTime)
+    (permissions, maybeLoggedIn) <- case maybeCurrentUser of
+      Nothing -> return (0, Nothing)
+      Just (tvCurrentUser, currentUser@User{..}) -> do
+        --modifyTVar' tvUsersInChat $ HashMap.insert _userId currentUser
+        writeTQueue tqGlobalEvents $ MainChatGlobalEvent $ AddUser currentUser
+        tqNotifications <- newTQueue
+        userConns <- readTVar tvUserConns
+        let newUserConns = (\f -> HashMap.alter f _userId userConns) $ Just . pair tvCurrentUser . \case
+              Just (_, multiconns) -> HashMap.insert myConnId tqNotifications multiconns
+              _ -> HashMap.singleton myConnId tqNotifications
+        writeTVar tvUserConns newUserConns
+        permissions <- getRolePower _role
+        return (permissions, Just (tvCurrentUser, tqNotifications))
+    return (myTQGlobal, permissions, maybeLoggedIn)
+  wsState@ WSState {..} <- WSState myConnId permissions <$> (newTVarIO =<< currentTime)
 
   -- STAGE 2: Main Loop
   -- do all actions forever until an exception
-  raceMany $ foreverE <$>
-    [sendFromTQueue myTQGlobal -- send all data that comes into my custom tqueue
-    ,do liftIO $ threadDelay $ 4 * minutes
-        maybeException <$> sendPingE ("PING" :: Text)
-    ,receiveDataE >>= \case
-      Left e -> stopWith e
-      Right str -> processWSRequest wsState str -- process all requests
-    ] ++ -- notifications require user to be logged in
-    case maybeLoggedIn of
-      Nothing -> []
-      Just loggedIn@(_, tqNotifications) ->
-        [atomically (readTQueue tqNotifications) >>= processNotifications wsState loggedIn]
+  raceMany $ foreverE <$> catMaybes
+    [Just $ sendFromTQueue permissions myTQGlobal -- send all data that comes into my custom tqueue
+    ,Just $ pingPong wsState
+    ,Just $ receiveDataE >>= \case
+      Left _ -> stop
+      Right str -> processWSRequest wsState maybeLoggedIn str -- process all requests
+      -- notifications require user to be logged in
+    ,maybeLoggedIn <&> \loggedIn@(_, tqNotifications) ->
+        atomically (readTQueue tqNotifications) >>= processNotifications wsState loggedIn
+    ]
 
   -- STAGE 3: when an exception occurs, disconnect
   atomically $ do
     modifyTVar' tvWSConns $ HashMap.delete myConnId
-    currentUser `for_` \User {..} -> do
+    maybeCurrentUser `for_` \(tvCurrentUser, User{..}) -> do
       modifyTVar' tvUserConns $ flip HashMap.update _userId $ \(user, conns) ->
         let newConns = HashMap.delete myConnId conns
         in if HashMap.null newConns then Nothing else Just (user, newConns)
       --modifyTVar' tvUsersInChat $ HashMap.delete _userId
-      writeTQueue tqGlobalEvents $ MainChat $ RemoveUser _username
+      writeTQueue tqGlobalEvents $ MainChatGlobalEvent $ RemoveUser _username
+
+
+
+
+pingPong :: WSState -> WSResult
+pingPong WSState{..} = do
+  liftIO $ threadDelay $ 4 * minutes - 10 * seconds
+  sendPingE ("PING" :: Text) >>= \case
+    Left _ -> stop
+    Right _ -> do
+      liftIO $ threadDelay $ 10 * seconds
+      currentTime <- currentTime
+      timeAtLastPong <- readTVarIO tvTimeAtLastPong
+      if 10 * seconds > timeAtLastPong - currentTime
+         then do sendClose ("Close" :: Text)
+                 stop
+         else continue
 
 
 
 
 
 
-
-processWSRequest :: WSState -> BS.ByteString -> WSException
-processWSRequest _ "PONG" = continue
-processWSRequest wsState@WSState {..} str = flip (maybe continue) (decode str) $ \wsRequest -> do
+processWSRequest :: WSState -> Maybe LoggedIn -> BS.ByteString -> WSResult
+processWSRequest WSState{..} _ "PONG" = do
+  currentTime <- currentTime
+  atomically $ writeTVar tvTimeAtLastPong currentTime
+  continue
+processWSRequest WSState{..} maybeLoggedIn str = flip (maybe continue) (decode str) $ \wsRequest -> do
   App {..} <- lift getYesod
   case wsRequest of
     GESubscription geSub@GESub {..} -> do
-      -- Nothing == Chatter, Just False == Mod, Just True == Admin
-      putStrLn "TEST"
-      putStrLn $ showText geSub
-      putStrLn $ showText myConnId
-      permissions <- maybeLoggedIn >>*= \(tvCurrentUser,_) -> do
-          role <- _role <$> readTVarIO tvCurrentUser
-          if | isAdmin role -> return $ Just True
-             | isMod role   -> return $ Just False
-             | otherwise    -> return Nothing
       atomically $ modifyTVar' tvWSConns $ flip HashMap.adjust myConnId $ set _1
-        geSub {recieveModEvents = recieveModEvents && Nothing /= permissions
+        geSub {recieveModEvents = recieveModEvents && permissions > 0
               --,recieveSubDono = recieveSubDono && Just True == permissions
               }
       continue
-    GetStreamStatus -> sendValueDataR . toJSON . StreamStatus =<<
-      liftIO (readTVarIO tvStreamStatus)
-    GetUsersInChat -> do
-      usersInChat <- readTVarIO tvUserConns >$>= readTVarIO . fst
-      sendValueDataR <=< jsonResponse "main_chat" $ -- send list users in main chat
-        chatMessageJson $ SetUserList $ HashMap.fromList $
-          fmap (pair =<< _username) $ HashMap.elems usersInChat
+    --GetStreamStatus -> sendValueData . toJSON . StreamStatusGlobalEvent =<<
+    --  liftIO (readTVarIO tvStreamStatus)
+    --GetUsersInChat -> do
+    --  usersInChat <- readTVarIO tvUserConns >$>= readTVarIO . fst
+    --  sendValueData <=< jsonResponse "main_chat" $ -- send list users in main chat
+    --    chatMessageJson $ SetUserList $ HashMap.fromList $
+    --      (pair =<< _username) <$> HashMap.elems usersInChat
     _ -> continue
 
 
 
-processNotifications :: WSState -> (TVar User, TQueue Notification) -> Notification -> WSException
-processNotifications wsState@WSState {..} (tvCurrentUser, tqNotifications) noti = do
+processNotifications :: WSState -> LoggedIn -> Notification -> WSResult
+processNotifications WSState {..} (tvCurrentUser, tqNotifications) noti = do
   App {..} <- lift getYesod
   case noti of
-    Whisper -> continue
+    _ -> continue
 
 
 
@@ -158,10 +163,10 @@ processNotifications wsState@WSState {..} (tvCurrentUser, tqNotifications) noti 
 
 
 
-continue :: WSException
-continue = return Nothing
-stopWith :: SomeException -> WSException
-stopWith = return . Just
+continue :: WSResult
+continue = return True
+stop :: WSResult
+stop = return False
 
 
 raceMany :: [WSHandler a] -> WSHandler a
@@ -169,44 +174,54 @@ raceMany = runConcurrently . foldr (\b a -> a <|> Concurrently b) empty
 
 
 
-foreverE :: Monad m => m (Maybe a) -> m a
+foreverE :: Monad m => m Bool -> m ()
 foreverE m = do
-  m >>= \case
-    Nothing -> foreverE m
-    Just e -> return e
+  continue <- m
+  when continue $ foreverE m
 
 --receiveDataForeverE :: WSHandler [Either SomeException BS.ByteString]
 --receiveDataForeverE = do
 --  eitherData <- receiveDataE
 --  (eitherData ::) =<< receiveDataForeverE
 
-sendFromTQueue :: ToJSON a => TQueue a -> WSException
-sendFromTQueue tqueue = fmap maybeException $
-  sendValueData . toJSON =<< atomically (readTQueue tqueue)
+sendFromTQueue :: Int -> TQueue PValue -> WSResult
+sendFromTQueue permissions tqueue = sendValueData =<<
+  atomically (readTQueue tqueue ?? permissions)
 
-sendValueDataR :: Value -> WSException
-sendValueDataR = fmap exceptionToResult . sendValueData
-sendValueData :: Value -> WSHandler (Either SomeException ())
-sendValueData = sendTextDataE . TextL.toStrict . encodeToLazyText
+sendValueData :: Value -> WSResult
+sendValueData = fmap exceptionToResult . sendTextDataE . TextL.toStrict . encodeToLazyText
 
 
-exceptionToResult :: Either SomeException () -> Maybe SomeException
-exceptionToResult (Right _) = Nothing
-exceptionToResult (Left e) = Just e
-
-maybeException :: Either SomeException () -> Maybe SomeException
-maybeException (Right _) = Nothing
-maybeException (Left e) = Just e
+exceptionToResult :: Either SomeException () -> Bool
+exceptionToResult = isRight
 
 
 
-type WSException = WSHandler (Maybe SomeException)
+type WSResult = WSHandler Bool
 
 type WSHandler = WebSocketsT Handler
 
+type LoggedIn = (TVar User, TQueue Notification)
+
 data WSState = WSState
   {myConnId :: Int
-  ,tvGESub :: TVar GESub
-  ,maybeLoggedIn :: Maybe (TVar User, TQueue Notification)
-  ,tvTimeSinceLastMessage :: TVar Int
+  ,permissions :: Int
+  ,tvTimeAtLastPong :: TVar Int
   }
+
+
+
+
+{-
+NOTES
+
+1 Default Global Events Subscription: 
+  - All GE subscriptions are set to False by default
+  - Users can change their subscriptions via a request using Web Sockets
+  - The alternative would be to assume the user will send a GESub request and wait for it to come
+  - This halts the rest of the thread for no good reason because the user can change it later
+  - We just view the first GESub request as a "change" rather than an initial state
+
+2
+
+-}

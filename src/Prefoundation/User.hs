@@ -1,8 +1,9 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Internal.User where
+module Prefoundation.User where
 
 import Control.Lens hiding ((.=))
+import Data.Char as Char
 import Data.HashSet as HashSet
 import Data.Text as Text
 
@@ -12,7 +13,7 @@ import Import.NoFoundation
 data User = User
   {_userId             :: Int64
   ,_accountInfo        :: AccountInfo
-  ,_creatorInfo        :: Maybe Creator
+  ,_creatorInfo        :: Maybe TVCreator
   ,_moderation         :: UserModeration
   ,_username           :: Text
   ,_pronouns           :: Maybe Text
@@ -20,9 +21,10 @@ data User = User
   ,_badges             :: BadgeCollection
   ,_nameColor          :: NameColor
   --,_points             :: Int
-  } deriving Show
+  }
 
---fromUserDB :: UserDB -> User
+type UserId = Int64
+type TVUser = TVar User
 
 --------------------------------------------------------------------------------
 -- Account Info
@@ -34,20 +36,37 @@ data AccountInfo = AccountInfo
   ,_numMonthsSubbed    :: Int
   ,_season             :: Int
   -- 3rd party connections
-  ,_twitchConn         :: Bool
-  ,_googleConn         :: Bool
+  ,_twitchConn         :: Maybe TwitchConn
+  --,_googleConn         :: ()
   } deriving Show
 
-
+data TwitchConn = TwitchConn
+  {twitchId           :: Text
+  ,twitchAccessToken  :: Text
+  ,twitchRefreshToken :: Text
+  ,twitchLogin        :: Text
+  ,twitchEmail        :: Text
+  ,twtichCreatedTime  :: Int
+  ,twitchFollowTime   :: Int
+  ,twitchIsSubscriber :: Int
+  } deriving Show
 
 -- User Moderation
 
 data UserModeration = UserModeration
-  {_numMessages :: Int -- number of messages (not only emotes) sent during stream
+  {_meaningfulMessages :: Int -- number of messages (not only emotes) sent during stream
+  ,_last5MessagesTimes :: [Int]
   ,_numModActions :: Int
+  ,_isOnWatchList :: Bool
   } deriving Show
 
-isSafeUser moderation = _numMessages moderation >= 1000
+isSafeUser :: UserModeration -> Bool
+isSafeUser moderation = _meaningfulMessages moderation >= 1000
+
+isPronounsCorrectFormat :: Text -> Bool
+isPronounsCorrectFormat newPronouns = not
+   $ betweenLen 2 10 newPronouns
+  && Text.all (\c -> Char.isAlphaNum c || c == '/') newPronouns
 
 --------------------------------------------------------------------------------
 -- Roles
@@ -58,7 +77,7 @@ If SpecialRole were the same type as Chatter, a Chatter value could accidently
 be added into tvSpecialRoles which is specifically a collction of SpecialRoles.
 -}
 
-type Role = Either Chatter SpecialRole
+type Role = Either Chatter TVSpecialRole
 
 data Chatter = Chatter
   {_months :: Int
@@ -66,36 +85,37 @@ data Chatter = Chatter
   } deriving Show
 
 data SpecialRole = SpecialRole
-  {_roleName :: Text
-  ,_power :: Int -- streamer, mods, vips
-  } deriving Show
+  {_roleId   :: Int64
+  ,_roleName :: Text
+  ,_power    :: Int -- streamer, mods, vips
+  ,_order    :: Int
 
-isMod :: Role -> Bool
+  } deriving Show
+type TVSpecialRole = TVar SpecialRole
+
+getRolePower :: Role -> STM Int
+getRolePower role = case role of
+  Right r -> readTVar r <&> _power
+  _ -> return 0
+
+isMod :: Role -> STM Bool
 isMod role = case role of
-  Right r -> isMod_ r
-  _ -> False
+  Right r -> readTVar r <&> isMod_ 
+  _ -> return False
 isMod_ :: SpecialRole -> Bool
 isMod_ role = case role of
-  SpecialRole _ power | power >= 1 -> True
+  SpecialRole{..} | _power >= 1 -> True
   _ -> False
 
-
-isAdmin :: Role -> Bool
+isAdmin :: Role -> STM Bool
 isAdmin role = case role of
-  Right r -> isAdmin_ r
-  _ -> False
+  Right r -> readTVar r <&> isAdmin_
+  _ -> return False
 isAdmin_ :: SpecialRole -> Bool
 isAdmin_ role = case role of
-  SpecialRole _ power | power == 2 -> True
+  SpecialRole{..} | _power == 2 -> True
   _ -> False
 
-simpleRoleJSON :: Role -> Value
-simpleRoleJSON (Right (SpecialRole roleName _)) = object
-  ["special" .= roleName]
-simpleRoleJSON (Left (Chatter 0 _)) = Null
-simpleRoleJSON (Left (Chatter months sub)) = object
-  ["months" .= months
-  ,"tier" .= maybe 0 _subTier sub]
 
 --------------------------------------------------------------------------------
 -- Badge Collection
@@ -106,25 +126,29 @@ data BadgeCollection = BadgeCollection
   ,_collection :: HashSet Text -- including the first and second badge
   } deriving Show
 
+setFirstBadge :: Text -> BadgeCollection -> BadgeCollection
 setFirstBadge badge badgeCollection =
   if HashSet.member badge $ _collection badgeCollection
      then badgeCollection {_firstBadge = Just badge}
      else badgeCollection
 
+setSecondBadge :: Text -> BadgeCollection -> BadgeCollection
 setSecondBadge badge badgeCollection =
   if HashSet.member badge $ _collection badgeCollection
      then badgeCollection {_secondBadge = Just badge}
      else badgeCollection
 
+clearFirstBadge :: BadgeCollection -> BadgeCollection
 clearFirstBadge badgeCollection = badgeCollection
   {_firstBadge = _secondBadge badgeCollection
   ,_secondBadge = Nothing}
 
+clearSecondBadge :: BadgeCollection -> BadgeCollection
 clearSecondBadge badgeCollection = badgeCollection
   {_secondBadge = Nothing}
 
 instance ToJSON BadgeCollection where
-  toJSON (BadgeCollection {..}) = object
+  toJSON BadgeCollection{..} = object
     ["first_badge" .= _firstBadge
     ,"second_badge" .= _secondBadge
     ,"collection" .= _collection]
@@ -189,7 +213,7 @@ data ChromaMode
 --          Blue -> ChromaColor 205 80 80 70 90
 
 instance ToJSON ChromaColor where
-  toJSON (ChromaColor {..}) = object
+  toJSON ChromaColor {..} = object
     ["hue" .= _hue
     ,"chroma_light" .= _chromaLight
     ,"chroma_dark" .= _chromaDark
@@ -230,7 +254,7 @@ instance FromJSON ChromaColor where
 --  | RawMessage String -- for testing
 
 data UserMessage = UserMessage
-  {_senderId :: Int64 -- UserId
+  {_sender :: TVUser -- UserId
   ,_timestamp :: Int
   --,_messageType : Maybe SpecialMessage
   ,_message :: Text
@@ -252,8 +276,9 @@ data UserMessage = UserMessage
 
 data Creator = Creator
   {_creatorId :: Int64
+  ,_creatorName :: Bool
   } deriving Show
-
+type TVCreator = TVar Creator
 
 
 --------------------------------------------------------------------------------
@@ -290,7 +315,7 @@ data SubBadge = SubBadge
   } deriving (Eq, Show)
 
 instance ToJSON SubBadge where
-  toJSON (SubBadge {..}) = object
+  toJSON SubBadge {..} = object
     ["months_required" .= monthsRequired
     ,"emote" .= emote]
 
@@ -301,8 +326,8 @@ data Emote = Emote
 
 
 data Image = Image
-  {width :: Float
-  ,height :: Float
+  {width :: Double
+  ,height :: Double
   ,url :: Text
   } deriving (Eq, Show, Generic, ToJSON)
 
@@ -322,6 +347,7 @@ data Image = Image
 
 makeLenses ''User
 makeLenses ''AccountInfo
+makeLenses ''UserModeration
 makeLenses ''Chatter
 makeLenses ''SpecialRole
 makeLenses ''BadgeCollection

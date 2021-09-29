@@ -17,7 +17,11 @@ import Data.Time.RFC3339 (parseTimeRFC3339)
 
 import Streamer
 
+type WSConnId = Int
+
 type TVHashMap k v = TVar (HashMap k v)
+type TVHash64Map v = TVar (HashMap Int64 v)
+type TVHash64MapTV v = TVar (HashMap Int64 (TVar v))
 type TVIntMap v = TVar (IntMap v)
 
 
@@ -27,9 +31,6 @@ flip2 f b c a = f a b c
 
 f2map :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
 f2map = fmap . fmap
-
-fmap2 :: Applicative f => (a -> b -> c) -> f a -> f b -> f c
-fmap2 f m n = f <$> m <*> n
 
 intmap f as =
   let intmap_ n f (a:as) = f n a : intmap_ (n + 1) f as
@@ -46,6 +47,9 @@ isRight e = case e of
   Right _ -> True
   _ -> False
 
+whem :: Monoid m => Bool -> m -> m
+whem b m = if b then m else mempty
+
 showText :: Show a => a -> Text
 showText = Text.pack . show
 
@@ -58,7 +62,12 @@ betweenLen :: Int -> Int -> Text -> Bool
 betweenLen num1 num2 str = Text.length str >= num1
                         && Text.length str <= num2
 
+--validUsername :: Text -> Bool
+--validUsername username = betweenLen 3 24 username
+--                     && Text.all (\c -> Char.isAlphaNum c || c == '_')
+--                                 username
 
+--validPronouns
 
 
 mkQuery :: a -> b -> (a, Maybe b)
@@ -69,17 +78,16 @@ currentTime :: MonadIO m => m Int
 currentTime = round . (* 1000000) <$> liftIO POSIX.getPOSIXTime
 
 rfc3339ToPOSIXSeconds :: Text -> Maybe Int
-rfc3339ToPOSIXSeconds time = round <$> utcTimeToPOSIXSeconds <$> zonedTimeToUTC <$>
+rfc3339ToPOSIXSeconds time = round . utcTimeToPOSIXSeconds . zonedTimeToUTC <$>
   parseTimeRFC3339 time
 
 jsonResponse :: Monad m => Text -> [(Text, Value)] -> m Value
 jsonResponse responseType json = return $ object $
-  ["type" .= responseType]
-  ++ json
+  ("type" .= responseType) : json
 
 
 jsonError :: Monad m => Text -> m Value
-jsonError errMsg = return $ object $ ["error" .= errMsg]
+jsonError errMsg = return $ object ["error" .= errMsg]
 
 -- in micro seconds
 seconds :: Num a => a
@@ -103,4 +111,9 @@ assignSeason time = List.foldr
 
 
 
+modifyTVarIO :: MonadIO m => TVar a -> (a -> a) -> m ()
 modifyTVarIO tvar = atomically . modifyTVar' tvar
+
+
+
+

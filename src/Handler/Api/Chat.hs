@@ -1,8 +1,11 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-unused-do-bind #-}
 
-module Handler.Api.Chat where
+module Handler.Api.Chat
+ (postChatR
+ ) where
 
 import Control.Concurrent
 import Control.Monad.Trans.Maybe
@@ -18,68 +21,108 @@ import qualified Data.Text as Text
 import Import
 import qualified Model as DB
 
-import Internal.Api
-import Internal.WS
-import Internal.User
+import Postfoundation.Api
+import Postfoundation.Moderation
+import Prefoundation
+
 
 import Streamer
 
 
 postChatR :: Handler Value
-postChatR = apiIfLoggedIn $ \currentUser@User {..} -> do
+postChatR = apiIfLoggedIn $ \tvCurrentUser currentUser@User {..} -> do
   App {..} <- getYesod
-  timeStamp <- currentTime
-  let sendMessage tvar message sendEvent = do
-        modifyTVar' tvar $ IntMap.insert timeStamp message
+  currentTime <- currentTime
+  let modifyUser = modifyUserConnDB tvUsers _userId
+      dbUserId = P.toSqlKey _userId
+      sendMessage tvar message sendEvent = do
+        modifyTVar' tvar $ IntMap.insert currentTime message
         writeTQueue tqGlobalEvents $ sendEvent message
+      limitChat tvchat = do
+        chat <- readTVar tvchat
+        when (IntMap.size chat > 500) $
+          modifyTVar' tvchat IntMap.deleteMin
   requireCheckJsonBody >>= \case
     MainChatMessageRequest message -> do
-      let userMessage = UserMessage _userId timeStamp message False
+      -- TODO log the number of times each emote get used
+      let userMessage = UserMessage tvCurrentUser currentTime message False
           sendToMainChat = do
-            sendMessage tvMainChat userMessage $ MainChat . AddUserMessage currentUser
+            sendMessage tvMainChat userMessage $
+              MainChatGlobalEvent . AddUserMessage currentUser
+            limitChat tvMainChat
           delayMessage = do
-            atomically $ sendMessage tvMainChat userMessage $ ModEvent . AddDelayedUserMessage currentUser
+            atomically $ sendMessage tvMainChat userMessage $
+              ModGlobalEvent . AddDelayedUserMessage currentUser
             liftIO $ threadDelay $ 2 * seconds
             atomically $ do
               mainChatDelayed <- readTVar tvMainChatDelayed
-              when (IntMap.member timeStamp mainChatDelayed) $ do
-                modifyTVar' tvMainChatDelayed $ IntMap.delete timeStamp
-                sendToMainChat
-      if isMod _role || isSafeUser _moderation
-        then atomically sendToMainChat
-        else delayMessage
-      jsonResponse "message" []
+              if IntMap.member currentTime mainChatDelayed
+                 then do modifyTVar' tvMainChatDelayed $ IntMap.delete currentTime
+                         sendToMainChat
+                         return True
+                 else return False
+      if False -- check profanity
+         then jsonError "Invalid Language"
+         else do -- check mute list
+           maybeMutedTime <- IntMap.lookup (fromEnum _userId) <$> readTVarIO tvMuteList
+           if fmap (< currentTime) maybeMutedTime == Just True
+             then jsonError "Muted"
+             else do -- allowed
+               -- remove user from mute list if they were previously in it
+               when (isJust maybeMutedTime) $ atomically $
+                 modifyTVar' tvMuteList $ IntMap.delete (fromEnum _userId)
+               -- add message to database
+               runDB $ P.insert $ DB.UserMessage dbUserId currentTime message
+               -- send message to mods/global
+               wasMessageSent <- if isRight _role || isSafeUser _moderation
+                 then do atomically sendToMainChat
+                         return True
+                 else delayMessage
+               -- if message was not deleted by mods during delay, increment _meaningfulMessages
+               if not wasMessageSent
+                  then jsonError "Removed By Mods"
+                  else do
+                    streamStatus <- readTVarIO tvStreamStatus
+                    isMessageMeaningful <- isMessageMeaningful message
+                    when (isMessageMeaningful && isStreaming streamStatus) $
+                      modifyUser
+                        [DB.UserMeaningfulMessages =. _meaningfulMessages _moderation + 1]
+                        $ over (moderation . meaningfulMessages) (+ 1)
+                    jsonResponse "message" []
     -- no need to moderate
     ModChatMessageRequest message -> do
-      when (isMod _role) $ do
-        timeStamp <- currentTime
-        let userMessage = UserMessage _userId timeStamp message False
+      atomically (isMod _role) >>= flip when do
+        let userMessage = UserMessage tvCurrentUser currentTime message False
             addUserMessage = AddUserMessage currentUser userMessage
-        timeStamp <- currentTime
-        atomically $ writeTQueue tqGlobalEvents $ ModEvent $ ModChat addUserMessage
+        -- add message to database
+        runDB $ P.insert $ DB.UserModMessage dbUserId currentTime message
+        atomically $ do
+          sendMessage tvModChat userMessage $
+            ModGlobalEvent . ModChat . AddUserMessage currentUser
+          limitChat tvModChat
       jsonResponse "message" []
     -- WhisperMessageRequest
     --ModerationRequest modRequest -> if not $ isMod _role then continue else case modRequest of
     --  ModAction _ -> jsonResponse "chat_message" []
     UserInfo username -> findUser username >>= \case
       Nothing -> jsonError "User Not Found"
-      Just User {..} -> do
-        modInfo <- if not $ isMod _role then return []
-          else do
-            return ["num_messages" .= _numMessages _moderation
-                   ,"mod_actions" .= ([] :: [Int])
-                   ]
+      Just (tvCurrentUser, User{..}) -> do
+        modInfo <- do 
+          isMod <- atomically $ isMod _role
+          return $ if not $ isMod then []
+          else ["meaningful_messages" .= _meaningfulMessages _moderation
+               --,"mod_actions" .= ([] :: [Int])
+               ]
+        (permissions, toRoleJSON) <- atomically $ (,) <$> getRolePower _role <*> toPJSON_ _role
         jsonResponse "get_user_info" $
-          ["role" .= simpleRoleJSON _role
+          ["role" .= toRoleJSON permissions
           ,"badges" .= toJSON
                (toList (_firstBadge _badges)
              ++ toList (_secondBadge _badges))
           ,"pronouns" .= _pronouns
           ,"name_color" .= nameColorJSON _role _nameColor
           ,"account_creation" .= _userCreationTime _accountInfo
-          ,"power" .= case _role of
-            Right SpecialRole {..} -> _power
-            _ -> 0
+          ,"power" .= permissions
           ,"season" .= _season _accountInfo
           ] ++ modInfo
     _ -> jsonResponse "TODO" []
@@ -97,20 +140,17 @@ data ChatRequest
       {message :: Text}
   | ModChatMessageRequest
       {message :: Text}
-  | WhisperMessageRequest
-      {receiver :: Text
-      ,message :: Text}
   | UserInfo
       {usernameSearch :: Text}
-  | ModerationRequest ModerationRequest -- must be mod
-
-data ModerationRequest
-  = ModAction ModAction
-
-
-data ModAction
-  = Censor Text Int -- username time length
-  | Ban Text -- username
+--  | ModerationRequest ModerationRequest -- must be mod
+--
+--data ModerationRequest
+--  = ModAction ModAction
+--
+--
+--data ModAction
+--  = Mute Text Int -- username time length
+--  | Ban Text -- username
 
 
 
@@ -119,32 +159,22 @@ instance FromJSON ChatRequest where
     "message" -> obj .: "type_chat" >>= \case
       "main" -> MainChatMessageRequest <$> obj .: "message"
       "mod" -> ModChatMessageRequest <$> obj .: "message"
-      "whisper" -> WhisperMessageRequest <$> obj .: "receiver"
-                                         <*> obj .: "message"
       str -> fail $ "Do Not Recognize Chat Type Request Type: " ++ str
     "get_user_info" -> UserInfo <$> obj .: "username"
     str -> fail $ "Do Not Recognize Chat Request Type: " ++ str
 
+{-
+NOTES
 
+Main Chat Messges
+  - First check for profanity
+  - Add message to DB (UserMessage Table)
+  - If user is a special user or a "safe user", send to tvMainChat right away
+    otherwise send message to mods adn tvMainChatDelayed, and delay message
+    from tvMainChat for 2 seconds
+  - If mods have not removed message from tvMainChatDelayed after 2 seconds,
+    send to tvMainChat
+  - If message is "meaningful", increment userMeaningfulMessages in DB (User
+    Table) and in tvUserConns
 
---data ChatRequest
---  = Message
---      {chatLocale :: ChatLocale
---      ,message :: Text}
---
---data ChatLocale
---  = MainChatLocale
---  | ModChatLocale
---  | WhisperLocale {receiver :: Text}
---
---instance FromJSON ChatRequest where
---  parseJSON = withObject "ChatRequest" $ \obj -> do
---    let chatLocale = obj .: "chat_locale" >>= \case
---          "main" -> return MainChatLocale
---          "mod" -> return ModChatLocale
---          "whisper" -> WhisperLocale <$> obj .: "receiver"
---          str -> fail $ "Do Not Recognize Chat Locale Type: " ++ str
---    obj .: "type" >>= \case
---      "message" -> Message <$> chatLocale
---                           <*> obj .: "message"
---      str -> fail $ "Do Not Recognize Chat Request Type: " ++ str
+-}

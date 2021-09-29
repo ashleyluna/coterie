@@ -20,7 +20,7 @@ import System.Random as SyR
 import Web.Cookie
 
 
-import Internal.User
+import Prefoundation
 import Streamer
 
 
@@ -58,18 +58,17 @@ import Streamer
 -- automatically validated
 getTwitchUserFull :: MonadIO m => TwitchTokens
                                -> m (Maybe (TwitchAuthInfo, TwitchUser
-                                           ,Maybe Int, Maybe Int))
+                                           ,Int, Int))
 getTwitchUserFull tokens = validateToken tokens >>= \case
   TwitchRevoked -> do putStrLn "Plz Revoke" -- TODO Revoke
                       return Nothing
   userAuthInfo@(TwitchAuthInfo tokens (TwitchAccount {..})) -> runMaybeT $ do
     twitchUser <- MaybeT $ getTwitchUser_ tokens
-    MaybeT $ do
-      twitchFollowInfo <- getTwitchFollowInfo_ tokens twitchId
-      twitchSubInfo <- getTwitchSubInfo_ tokens twitchId
-      return $ Just (userAuthInfo, twitchUser
-                    ,fmap followedAt twitchFollowInfo
-                    ,fmap twitchSubTier twitchSubInfo)
+    twitchFollowInfo <- MaybeT $ getTwitchFollowInfo_ tokens twitchId
+    twitchSubInfo <- MaybeT $ getTwitchSubInfo_ tokens twitchId
+    return $ (userAuthInfo, twitchUser
+             ,followedAt twitchFollowInfo
+             ,twitchSubTier twitchSubInfo)
 
 
 
@@ -181,7 +180,7 @@ instance FromJSON TwitchAccount where
 
 data TwitchUser = TwitchUser
   {twitchEmail :: Text
-  ,createdAt :: Text
+  ,createdAt :: Int
   ,profileImageUrl :: Text
   } deriving Show
 instance FromJSON TwitchUser where
@@ -190,7 +189,7 @@ instance FromJSON TwitchUser where
     case users of
       [] -> fail "No User Provided"
       obj:_ -> TwitchUser <$> obj .: "email"
-                          <*> obj .: "created_at"
+                          <*> (obj .: "created_at" >>= rfc3339Json)
                           <*> obj .: "profile_image_url"
 
 newtype TwitchFollowInfo = TwitchFollowInfo

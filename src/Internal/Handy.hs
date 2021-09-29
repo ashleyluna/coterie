@@ -2,9 +2,12 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Internal.Handy where
 
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.IntMap.Strict as IntMap
 import Data.Time.Clock as Clock
 import qualified Database.Esqueleto.Experimental as E
 import Database.Persist.Sql as P
@@ -14,14 +17,54 @@ import Foundation
 import Import.NoFoundation
 import qualified Model as DB
 
-import Internal.User
+import Prefoundation
 
---getUser :: Text -> Handler (Maybe (Entity DB.User))
---getUser = runDB . getBy . DB.UniqueUsername
---
---getSub = runDB . getBy . DB.UniqueSubber
 
-randomDefaultColor :: Int -> Handler DefaultColor
+currentUser :: Handler MaybeTVUser
+--currentUser = maybeAuth >>=- fromUserDB
+currentUser = maybeAuthId >>== \userId -> do
+  App{..} <- getYesod
+  lookupUserKey tvUsers userId
+
+findUser :: Text -> Handler MaybeTVUser
+--findUser username = runDB (P.getBy $ DB.UniqueUsername username) >>=- fromUserDB_
+findUser username = do
+  App{..} <- getYesod
+  runDB (P.getBy $ DB.UniqueUsername username) >>== \(Entity userId _) -> do
+    lookupUserKey tvUsers userId
+    
+lookupUserId :: MonadIO m => TVHashMap Int64 TVUser -> UserId -> m MaybeTVUser
+lookupUserId tvUsers userId = do
+  HashMap.lookup userId <$> readTVarIO tvUsers >>=- \tvUser -> do
+    user <- readTVarIO tvUser
+    return (tvUser, user)
+
+lookupUserKey :: (ToBackendKey SqlBackend record, MonadIO m) =>
+  TVHashMap Int64 TVUser -> Key record -> m MaybeTVUser
+lookupUserKey tvUsers = lookupUserId tvUsers . P.fromSqlKey
+
+
+
+
+modifyUserConnDB :: TVHashMap Int64 TVUser -> Int64
+                 -> [P.Update DB.User] -> (User -> User) -> Handler ()
+modifyUserConnDB tvUserConns userId dbUpdates connUpdate = do
+  runDB $ P.update (P.toSqlKey userId) dbUpdates
+  atomically $ modifyUserConn tvUserConns userId connUpdate
+
+modifyUserConn :: TVHashMap Int64 TVUser
+               -> Int64 -> (User -> User) -> STM ()
+modifyUserConn tvUserConns userId f = do
+  maybeTVUser <- HashMap.lookup userId <$> readTVar tvUserConns
+  forM_ maybeTVUser $ \tvUser -> modifyTVar' tvUser f
+-- modifyUser f = atomically $ modifyUserConn tvUserConns _userId f
+
+type MaybeTVUser = Maybe (TVUser, User)
+
+--------------------------------------------------------------------------------
+
+
+randomDefaultColor :: MonadIO m => Int -> m DefaultColor
 randomDefaultColor uniqueNumber = do -- uniqueNumber usually will == userCreationTime
   rand <- fst . SyR.random . SyR.mkStdGen
     . (+ uniqueNumber) . fromEnum . Clock.utctDay
@@ -44,3 +87,4 @@ randomDefaultColor uniqueNumber = do -- uniqueNumber usually will == userCreatio
     14 -> Pink
     15 -> Purple
     _ -> Lavender
+

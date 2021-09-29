@@ -3,71 +3,88 @@
 
 User
   -- Account
-  creationTime          Int
-  email                 Text
-  lastNameChangeTime    Int
-  numMonthsSubbed       Int
-  season                Int
-  -- Connections
-  -- Twitch
-  twitchAccessToken     Text Maybe
-  twitchRefreshToken    Text Maybe
-  twitchId              Text Maybe
-  twitchLogin           Text Maybe
-  twitchEmail           Text Maybe
-  twitchCreated         Int  Maybe
-  twitchFollowTime      Int  Maybe
-  twitchIsSubscriber    Int  Maybe
-  -- Google
-  googleId              Text Maybe
+  creationTime       Int
+  email              Text
+  lastNameChangeTime Int
+  numMonthsSubbed    Int
+  season             Int
+  ---- Connections
+  twitchAuth         TwitchAuthId Maybe
+  googleAuth         GoogleAuthId Maybe
+
+  -- Moderation
+  meaningfulMessages Int
 
   -- Profile
-  username              Text
-  role                  RoleId Maybe
-  pronouns              Text   Maybe
-  points                Int
+  username           Text
+  role               RoleId Maybe
+  pronouns           Text   Maybe
+  points             Int
   -- Badges
-  firstBadge            Text Maybe
-  secondBadge           Text Maybe
-  badgeCollection       Text -- '%' separated badge names until use of arrays
+  firstBadge         Text Maybe
+  secondBadge        Text Maybe
+  badgeCollection    Text -- '%' separated badge names until use of arrays
   -- Name Color
-  defaultColor          Text Maybe -- null = RandomNameColor
-  colorMode             Text -- RGB, LRGB, HSI, etc
-  colorLeftH            Int  Maybe -- Hue
-  colorLeftCL           Int  Maybe -- Chroma Light Mode
-  colorLeftCD           Int  Maybe -- Chroma Dark Mode
-  colorLeftVL           Int  Maybe -- value Light Mode
-  colorLeftVD           Int  Maybe -- value Dark Mode
-  colorRightH           Int  Maybe
-  colorRightCL          Int  Maybe
-  colorRightCD          Int  Maybe
-  colorRightVL          Int  Maybe
-  colorRightVD          Int  Maybe
+  defaultColor       Text Maybe -- null = RandomNameColor
+  colorMode          Text -- RGB, LRGB, HSI, etc
+  colorLeftH         Int  Maybe -- Hue
+  colorLeftCL        Int  Maybe -- Chroma Light Mode
+  colorLeftCD        Int  Maybe -- Chroma Dark Mode
+  colorLeftVL        Int  Maybe -- value Light Mode
+  colorLeftVD        Int  Maybe -- value Dark Mode
+  colorRightH        Int  Maybe
+  colorRightCL       Int  Maybe
+  colorRightCD       Int  Maybe
+  colorRightVL       Int  Maybe
+  colorRightVD       Int  Maybe
 
-  UniqueEmail email
-  UniqueUsername username
-  UniqueTwitchId twitchId !force
-  UniqueGoogleId googleId !force
-  deriving Show
+  UniqueEmail      email
+  UniqueUsername   username
+  UniqueTwitchAuth twitchAuth !force
+  UniqueGoogleAuth googleAuth !force
 
 
+-- Connections
+TwitchAuth
+  userId       Text
+  accessToken  Text
+  refreshToken Text
+  login        Text
+  email        Text
+  createdTime  Int
+  followTime   Int
+  isSubscriber Int
+
+  UniqueTwitchId userId
+
+GoogleAuth
+  userId Text
+
+  UniqueGoogleId userId
 
 
 Role
   name  Text
   power Int
+  order Int -- user list role order
 
-  deriving Show
+  UniqueRoleName name
+  UniqueOrder order
 
 
 
-
+-- Main Chat
 UserMessage
   sender    UserId
-  chat      Int -- 1 == Main Chat, 2 == Mod Chat
   timestamp Int
   message   Text
+  -- meaningful Bool -- isn't just an emote
 
+-- Mod Chat
+UserModMessage
+  sender    UserId
+  timestamp Int
+  message   Text
 
 
 
@@ -79,6 +96,28 @@ DirectMessage
   --read              Bool
   deletedBySender   Bool
   deletedByReceiver Bool
+
+
+
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Moderation
+
+
+
+--Watch
+
+
+
+--Ban
+
+
+
+
+--IPBan
 
 
 
@@ -156,7 +195,18 @@ ActiveSub
   deriving Show
 
 
+-- FreeSub
 
+
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Other
+
+BotCommands
+  output
+  count Int -- number of time this command has been used
 
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
@@ -167,8 +217,7 @@ ActiveSub
 Image
   width Double
   height Double
-  url Double
-
+  url Text
   UniqueURl url
   deriving Show
 
@@ -178,7 +227,6 @@ Image
 Emote
   name Text
   image ImageId
-
   UniqueEmoteName name
   UniqueImage image
   deriving Show
@@ -186,30 +234,36 @@ Emote
 
 
 
+RoleBadge
+  emote EmoteId
+  UniqueRoleBadge emote
+  deriving Show
+
+SubBadge
+  emote EmoteId
+  tier Int
+  monthsRequired Int
+  UniqueSubBadge emote
+  deriving Show
+
+SeasonBadge
+  emote EmoteId
+  number Int
+  UniqueSeasonBadge emote
+  UniqueSeasonBadgeNumber number
+  deriving Show
+
+CommonBadge
+  emote EmoteId
+  UniqueBadge emote
+  deriving Show
+
 GlobalEmote
   emote EmoteId
-
   UniqueGlobalEmote emote
   deriving Show
 
-
-
-
 SubEmote
   emote EmoteId
-
   UniqueSubEmote emote
   deriving Show
-
-
-
-
-Badge
-
-
-SeasonBadge
-
-
-SubBadge
-
-RoleBadge

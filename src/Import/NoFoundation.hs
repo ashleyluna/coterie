@@ -4,7 +4,7 @@ module Import.NoFoundation
     ( module Import
     ) where
 
-import ClassyPrelude.Yesod         as Import hiding ((<&&>))
+import ClassyPrelude.Yesod         as Import hiding (getCurrentTime, (<&&>))
 import Control.Monad.Fail          as Import
 import Data.Aeson                  as Import
 import Settings                    as Import

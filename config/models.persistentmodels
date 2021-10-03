@@ -52,8 +52,8 @@ TwitchAuth
   login        Text
   email        Text
   createdTime  Int
-  followTime   Int
-  isSubscriber Int
+  followTime   Int Maybe
+  isSubscriber Int Maybe
 
   UniqueTwitchId userId
 

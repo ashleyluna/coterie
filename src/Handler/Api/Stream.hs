@@ -33,9 +33,9 @@ import ClassyPrelude.Yesod (readTVarIO)
 postStreamR :: Handler Value
 postStreamR = apiIfLoggedIn $ \tvCurrentUser currentUser@User{..} -> do
   App{..} <- getYesod
-  currentTime <- currentTime
+  currentTime <- getCurrentTime
   let permissions = getRolePower _role
-      modifyUser = modifyUserConnDB tvUsers _userId
+      modifyCurrentUser = modifyUser tvUsers _userId
       --dbUserId = P.toSqlKey _userId
       sendMessage tvar message sendEvent = do
         modifyTVar' tvar $ IntMap.insert currentTime message

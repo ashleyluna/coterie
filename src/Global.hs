@@ -16,10 +16,11 @@ import qualified Model as DB
 import Postfoundation
 import Prefoundation
 import Internal.TestSuite
+import Import.NoFoundation (modifyTVar)
 
 global :: App -> IO ()
 global foundation = do
-  --setUpDatabaseStandIns foundation
+  setUpDatabaseStandIns foundation
   temporaryDatabaseStandIns foundation
   -- Processes
   globalEvents foundation
@@ -52,13 +53,13 @@ setUpDatabaseStandIns app@App{..} = do
         return $ emote <&> \emote@Emote{..} -> pair name emote
 
   -- special roles
-  fromTable tvSpecialRoles (P.selectList [] []) $ 
+  fromTable tvSpecialRoles (P.selectList [] []) $
     \specialRoles -> HashMap.fromList <$> specialRoles `for` \(Entity key DB.Role{..}) -> do
       tvRole <- newTVarIO $ SpecialRole (P.fromSqlKey key) roleName rolePower roleOrder
       return $ pair (P.fromSqlKey key) tvRole
   -- sub badges
   fromTable tvSubBadges (P.selectList [] [P.Asc DB.SubBadgeMonthsRequired]) $
-    \subBadges -> 
+    \subBadges ->
           map (IntMap.fromList . map snd)
         . groupBy (\(tier1,_) (tier2, _) -> tier1 == tier2)
         . catMaybes
@@ -71,7 +72,7 @@ setUpDatabaseStandIns app@App{..} = do
   -- season badges
   fromTable tvSeasonBadges (P.selectList [] [P.Asc DB.SeasonBadgeNumber]) $
     \seasonBadges -> catMaybes <$> seasonBadges `for` \(Entity _ DB.SeasonBadge{..}) ->
-      runDB_ app (P.get seasonBadgeEmote) >>== fromEmote 
+      runDB_ app (P.get seasonBadgeEmote) >>== fromEmote
   -- special role badges
   fromTable tvSpecialRoleBadges (P.selectList [] []) $
     hashmapEmoteTable DB.roleBadgeEmote
@@ -84,9 +85,7 @@ setUpDatabaseStandIns app@App{..} = do
   -- sub only emotes
   fromTable tvSubOnlyEmoteList (P.selectList [] []) $
     hashmapEmoteTable DB.subEmoteEmote
-  
-  -- subscriptions
-  --fromTable tvSubscriptions $
+
 
 
 
@@ -98,6 +97,27 @@ setUpDatabaseStandIns app@App{..} = do
         tvUser <- newTVarIO user
         return $ pair _userId tvUser
 
+  -- subscriptions
+  fromTable tvSubscriptions (P.selectList [] []) $
+    \subscriptions -> do
+      HashMap.fromList . catMaybes <$> subscriptions `for` \(Entity key DB.Sub{..}) -> do
+        let subberId = P.fromSqlKey subUserId
+        maybeTVSubber <- HashMap.lookup subberId <$> readTVarIO tvUsers
+        maybeTVSub <- maybeTVSubber `for` \tvSubber -> do
+          tvGifter <- subGifter ->== \gifterId ->
+            HashMap.lookup (P.fromSqlKey gifterId) <$> readTVarIO tvUsers
+          newTVarIO $ Subscription (P.fromSqlKey key) (P.fromSqlKey subPaymentId)
+            tvSubber tvGifter subTier
+            subIs3MonthPackage subMessage subSource
+            False 1000000000 -- TODO fix these 2
+        maybeTVSub `for` \tvSub -> do
+          _ <- atomically $ do
+            maybeTVUser <- HashMap.lookup subberId <$> readTVar tvUsers
+            for maybeTVUser $ \tvUser -> modifyTVar' tvUser $ \user@User{..} -> user &
+              over role \role -> case role of
+                Left chatter -> Left $ set subscription (Just tvSub) chatter
+                _ -> role
+          return $ pair (P.fromSqlKey key) tvSub
 
 
 
@@ -162,64 +182,7 @@ subscriptionRemovalTimer App{..} = do
 
 
 
-fromUserDB :: App -> Entity DB.User -> IO User
-fromUserDB app@App{..} userEntity@(Entity userKey user@DB.User{..}) = do
-  let userId = E.fromSqlKey userKey
-      badges = BadgeCollection userFirstBadge userSecondBadge $
-        HashSet.fromList $ words userBadgeCollection
-      maybeLeft = ChromaColor <$> userColorLeftH
-                              <*> userColorLeftCL
-                              <*> userColorLeftCD
-                              <*> userColorLeftVL
-                              <*> userColorLeftVD
-      maybeRight = ChromaColor <$> userColorRightH
-                               <*> userColorRightCL
-                               <*> userColorRightCD
-                               <*> userColorRightVL
-                               <*> userColorRightVD
-  accountInfo <- do
-    twitchConn <- userTwitchAuth ->== runDB_ app . get >>=- \DB.TwitchAuth{..} -> 
-      return $ TwitchConn twitchAuthUserId twitchAuthAccessToken twitchAuthRefreshToken
-                          twitchAuthLogin twitchAuthEmail twitchAuthCreatedTime
-                          twitchAuthFollowTime twitchAuthIsSubscriber
-    return $ AccountInfo userCreationTime userEmail userLastNameChangeTime
-                         userNumMonthsSubbed userSeason
-                         twitchConn
-    --() -- google conn
-  defaultNameColor <- case userDefaultColor >>= readMay of
-    Just color -> return $ Right color
-    _ -> Left <$> randomDefaultColor userCreationTime
-  specialRoles <- liftIO $ readTVarIO tvSpecialRoles
-  role <- case userRole >>= flip HashMap.lookup specialRoles . E.fromSqlKey of
-    Just specialRole -> return $ Right specialRole
-    _ -> liftIO $ (Left . Chatter userNumMonthsSubbed) .
-                  -- check if user has a subscription
-                  HashMap.lookup userId <$> readTVarIO tvSubscriptions
-  let nameColor = NameColor defaultNameColor
-                            maybeLeft
-                            maybeRight
-                          $ fromMaybe LRGB $ readMay userColorMode
-  creatorInfo <- HashMap.lookup userId <$> readTVarIO tvCreators
-  moderation <- UserModeration <$> return userMeaningfulMessages
-                               <*> return []
-                               <*> return 0
-                               <*> return False
-  return $ User userId
-                accountInfo
-                creatorInfo
-                moderation
-                userUsername
-                userPronouns
-                role
-                badges
-                nameColor
-                -- points
 
-
-
-
-runDB_ :: App -> SqlPersistT IO a -> IO a
-runDB_ master action = P.runSqlPool action $ appConnPool master
 
 
 
@@ -271,13 +234,13 @@ temporaryDatabaseStandIns App{..} = atomically $ do
   --tvCreators
 
   -- Images
-  writeTVar tvSpecialRoles =<< specialRoles defaultStaticInfo
-  writeTVar tvSpecialRoleBadges $ specialRoleBadges defaultStaticInfo
-  writeTVar tvSubBadges $ subBadges defaultStaticInfo
-  writeTVar tvSeasonBadges $ seasonBadges defaultStaticInfo
-  writeTVar tvCommonBadges $ commonBadges defaultStaticInfo
-  writeTVar tvGlobalEmoteList $ globalEmoteList defaultStaticInfo
-  writeTVar tvSubOnlyEmoteList $ subOnlyEmoteList defaultStaticInfo
+  modifyTVar' tvSpecialRoles . HashMap.union =<< specialRoles defaultStaticInfo
+  modifyTVar' tvSpecialRoleBadges $ HashMap.union $ specialRoleBadges defaultStaticInfo
+  modifyTVar' tvSubBadges . liftA2 IntMap.union $ subBadges defaultStaticInfo
+  modifyTVar' tvSeasonBadges $ (++) $ seasonBadges defaultStaticInfo
+  modifyTVar' tvCommonBadges $ HashMap.union $ commonBadges defaultStaticInfo
+  modifyTVar' tvGlobalEmoteList $ HashMap.union $ globalEmoteList defaultStaticInfo
+  modifyTVar' tvSubOnlyEmoteList $ HashMap.union $ subOnlyEmoteList defaultStaticInfo
 
   -- Payment
   writeTVar tvSubscriptions $ subscriptions defaultStaticInfo
@@ -294,12 +257,12 @@ data DefaultStaticInfo = DefaultStaticInfo
   ,commonBadges      :: HashMap Text Emote
   ,globalEmoteList   :: HashMap Text Emote
   ,subOnlyEmoteList  :: HashMap Text Emote
-  ,subscriptions     :: HashMap Int64 Subscription
+  ,subscriptions     :: HashMap Int64 (TVar Subscription)
   }
 
 defaultStaticInfo :: DefaultStaticInfo
 defaultStaticInfo = DefaultStaticInfo
-  {specialRoles = HashMap.fromList <$> sequenceA 
+  {specialRoles = HashMap.fromList <$> sequenceA
      [pair 0 <$> newTVar (SpecialRole 0 "Vanguard" 2 1)
      ,pair 1 <$> newTVar (SpecialRole 1 "Vanguard" 1 2)
      ,pair 2 <$> newTVar (SpecialRole 2 "Creator"  0 3)
@@ -337,7 +300,7 @@ defaultStaticInfo = DefaultStaticInfo
      [Emote "serfscry" $ Image 698 698 "https://cdn.discordapp.com/attachments/645827500609372170/715384660032618556/twitchemoteExport0010.png"
      ,Emote "serfshmm" $ Image 1000 1000 "https://cdn.discordapp.com/attachments/645827500609372170/715384648590426203/twitchemoteExport0003.png"
      ]
-  ,subscriptions = HashMap.fromList 
+  ,subscriptions = HashMap.fromList
     [--pair 2 $ Subscription
     ]
   }

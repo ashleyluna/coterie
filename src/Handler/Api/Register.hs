@@ -22,12 +22,12 @@ module Handler.Api.Register
 import Data.Char as Char
 import Data.Function ((&))
 import qualified Data.List as List
-import qualified Data.Map.Strict as Map
+import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified Data.Text.IO as TextIO
 import qualified Database.Esqueleto.Experimental as E
-import Database.Persist.Sql as P
+import qualified Database.Persist.Sql as P
 import System.Random as SyR
 --import Text.Email.Validate as EmV
 import Yesod.Auth.Util.PasswordStore as YPS
@@ -52,6 +52,9 @@ import Postfoundation
 import Internal.StreamerInfo
 import Internal.Twitch
 import Prefoundation
+import Data.ByteString.Char8 (putStr)
+import Yesod (getYesod)
+import Import.NoFoundation (modifyTVar)
 
 
 -- check username
@@ -112,6 +115,7 @@ instance FromJSON CheckRequest where
 
 getRegTwitchR :: Handler ()
 getRegTwitchR = do
+  app@App{..} <- getYesod
   let Secrets {..} = streamerSecrets
   void $ lookupGetParam "code" >>=- \code -> do
     renderUrl <- getUrlRender
@@ -136,16 +140,13 @@ getRegTwitchR = do
               --    if followedAt <= seasonEndTime
               --       then Just $ "season" ++ showText int
               --       else Nothing
-              updateUserTwitchInfo userId = runDB $ do
-                user <- P.get userId
-                let season = fromMaybe (List.length $ seasonEndTimes streamerInfo) $ do
+              updateUserTwitchInfo userId = do
+                user <- runDB $ P.get userId
+                currentTime <- getCurrentTime
+                let newSeason = fromMaybe (List.length $ seasonEndTimes streamerInfo) $ do
                       oldSeason <- DB.userSeason <$> user
-                      return $ min oldSeason $ assignSeason twitchFollowedAt
-                P.update userId
-                  [DB.UserSeason             =. season
-                  --,UserBadgeCollection    =. seasonBadges
-                  ]
-                (DB.userTwitchAuth =<< user) `for_` flip P.update 
+                      return $ min oldSeason $ assignSeason $ fromMaybe currentTime twitchFollowedAt
+                runDB $ (DB.userTwitchAuth =<< user) `for_` flip P.update 
                   [DB.TwitchAuthAccessToken  =. accessToken
                   ,DB.TwitchAuthRefreshToken =. refreshToken
                   ,DB.TwitchAuthUserId       =. twitchId
@@ -155,6 +156,11 @@ getRegTwitchR = do
                   ,DB.TwitchAuthFollowTime   =. twitchFollowedAt
                   ,DB.TwitchAuthIsSubscriber =. maybeTwitchSub
                   ]
+                modifyUser tvUsers (P.fromSqlKey userId)
+                  [DB.UserSeason             =. newSeason
+                  --,UserBadgeCollection    =. seasonBadges
+                  ] $
+                  set (accountInfo . season) newSeason
           -- get current user and account associated with twitch info
           maybeUserId <- maybeAuthId
           maybeUser <- runDB $ getByUserAuth TwitchAuth twitchId
@@ -177,21 +183,26 @@ getRegTwitchR = do
             (Nothing, Nothing) -> void $
               lookupCookie "requestedUsername" >>=- \requestedUsername -> do
                 delReqCookie
+                -- add user to database
                 newUserDB <- newUserDB twitchEmail requestedUsername
                 let newTwitchAuth = DB.TwitchAuth
-                      {DB.twitchAuthAccessToken     = accessToken
-                      ,DB.twitchAuthRefreshToken    = refreshToken
-                      ,DB.twitchAuthUserId          = twitchId
-                      ,DB.twitchAuthLogin           = twitchLogin
-                      ,DB.twitchAuthEmail           = twitchEmail
-                      ,DB.twitchAuthCreatedTime     = createdAt
-                      ,DB.twitchAuthFollowTime      = twitchFollowedAt
-                      ,DB.twitchAuthIsSubscriber    = maybeTwitchSub
+                      {DB.twitchAuthAccessToken  = accessToken
+                      ,DB.twitchAuthRefreshToken = refreshToken
+                      ,DB.twitchAuthUserId       = twitchId
+                      ,DB.twitchAuthLogin        = twitchLogin
+                      ,DB.twitchAuthEmail        = twitchEmail
+                      ,DB.twitchAuthCreatedTime  = createdAt
+                      ,DB.twitchAuthFollowTime   = twitchFollowedAt
+                      ,DB.twitchAuthIsSubscriber = maybeTwitchSub
                       }
-                runDB $ do
+                userKey <- runDB $ do
                   twitchAuthKey <- P.insert newTwitchAuth
                   P.insert newUserDB
                     {DB.userTwitchAuth = Just twitchAuthKey}
+                -- take user info from databse and add to stm memory
+                newUser@User{..} <- fromUserDB app (Entity userKey newUserDB)
+                tvNewUser <- newTVarIO newUser
+                modifyTVarIO tvUsers $ HashMap.insert _userId tvNewUser
                   
                 setTwitchCreds
 
@@ -219,7 +230,7 @@ getRegTwitchR = do
 newUserDB :: MonadIO m => Text -> Text -> m DB.User
 newUserDB email username = do
   --id <- liftIO SyR.randomIO
-  creationTime <- currentTime
+  creationTime <- getCurrentTime
   let season = assignSeason $ creationTime `div` 1000000
   return $ DB.User
     -- Account

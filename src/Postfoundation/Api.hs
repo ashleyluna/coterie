@@ -17,11 +17,16 @@ import qualified Model as DB
 import Prefoundation
 
 
+
+runDB_ :: MonadIO m => App -> SqlPersistT IO a -> m a
+runDB_ master action = liftIO $ P.runSqlPool action $ appConnPool master
+
+
 getSub :: Key DB.User -> Handler (Maybe (Entity DB.ActiveSub))
 getSub = runDB . P.getBy . DB.UniqueSubber
 
 apiIfLoggedIn :: (TVUser -> User -> Handler Value) -> Handler Value
-apiIfLoggedIn f = currentUser >>= \case
+apiIfLoggedIn f = getCurrentUser >>= \case
   Nothing -> jsonError "Not Logged In"
   Just (tvUser, user) -> f tvUser user
 
@@ -37,6 +42,57 @@ apiIfNoProfanity str m =
 --------------------------------------------------------------------------------
 -- LiveInfo
 
+
+fromUserDB :: MonadIO m => App -> Entity DB.User -> m User
+fromUserDB app@App{..} userEntity@(Entity userKey user@DB.User{..}) = do
+  let userId = E.fromSqlKey userKey
+      badges = BadgeCollection userFirstBadge userSecondBadge $
+        HashSet.fromList $ words userBadgeCollection
+      maybeLeft = ChromaColor <$> userColorLeftH
+                              <*> userColorLeftCL
+                              <*> userColorLeftCD
+                              <*> userColorLeftVL
+                              <*> userColorLeftVD
+      maybeRight = ChromaColor <$> userColorRightH
+                               <*> userColorRightCL
+                               <*> userColorRightCD
+                               <*> userColorRightVL
+                               <*> userColorRightVD
+  accountInfo <- do
+    twitchConn <- userTwitchAuth ->== runDB_ app . get >>=- \DB.TwitchAuth{..} -> 
+      return $ TwitchConn twitchAuthUserId twitchAuthAccessToken twitchAuthRefreshToken
+                          twitchAuthLogin twitchAuthEmail twitchAuthCreatedTime
+                          twitchAuthFollowTime twitchAuthIsSubscriber
+    return $ AccountInfo userCreationTime userEmail userLastNameChangeTime
+                         userNumMonthsSubbed userSeason
+                         twitchConn
+    --() -- google conn
+  defaultNameColor <- case userDefaultColor >>= readMay of
+    Just color -> return $ Right color
+    _ -> Left <$> randomDefaultColor userCreationTime
+  specialRoles <- liftIO $ readTVarIO tvSpecialRoles
+  role <- case userRole >>= flip HashMap.lookup specialRoles . E.fromSqlKey of
+    Just specialRole -> return $ Right specialRole
+    _ -> return(Left $ Chatter userNumMonthsSubbed Nothing) -- NOTE 1
+  let nameColor = NameColor defaultNameColor
+                            maybeLeft
+                            maybeRight
+                          $ fromMaybe LRGB $ readMay userColorMode
+  creatorInfo <- HashMap.lookup userId <$> readTVarIO tvCreators
+  moderation <- UserModeration <$> return userMeaningfulMessages
+                               <*> return []
+                               <*> return 0
+                               <*> return False
+  return $ User userId
+                accountInfo
+                creatorInfo
+                moderation
+                userUsername
+                userPronouns
+                role
+                badges
+                nameColor
+                -- points
 
 
 
@@ -116,3 +172,15 @@ fromRoleDB (Entity key DB.Role {..}) = SpecialRole (fromSqlKey key) roleName rol
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 -- Stand In For Database
+
+
+
+
+{-
+1:
+  We don't add subscription information with fromUserDB beacause Subscription
+  needs TVUser for the user user who owns the subscription and the possible
+  gifter. Since fromUserDB should only be used for setUpDatabaseStandIns
+  and account creation, we just add the subscription information later.
+
+-}

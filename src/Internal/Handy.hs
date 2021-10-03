@@ -18,20 +18,21 @@ import Import.NoFoundation
 import qualified Model as DB
 
 import Prefoundation
+import Data.ByteString.Char8 (putStr)
 
 
-currentUser :: Handler MaybeTVUser
+getCurrentUser :: Handler MaybeTVUser
 --currentUser = maybeAuth >>=- fromUserDB
-currentUser = maybeAuthId >>== \userId -> do
+getCurrentUser = maybeAuthId >>== \userId -> do
   App{..} <- getYesod
-  lookupUserKey tvUsers userId
+  lookupUserId tvUsers $ P.fromSqlKey userId
 
 findUser :: Text -> Handler MaybeTVUser
 --findUser username = runDB (P.getBy $ DB.UniqueUsername username) >>=- fromUserDB_
 findUser username = do
   App{..} <- getYesod
   runDB (P.getBy $ DB.UniqueUsername username) >>== \(Entity userId _) -> do
-    lookupUserKey tvUsers userId
+    lookupUserId tvUsers $ P.fromSqlKey userId
     
 lookupUserId :: MonadIO m => TVHashMap Int64 TVUser -> UserId -> m MaybeTVUser
 lookupUserId tvUsers userId = do
@@ -39,18 +40,19 @@ lookupUserId tvUsers userId = do
     user <- readTVarIO tvUser
     return (tvUser, user)
 
-lookupUserKey :: (ToBackendKey SqlBackend record, MonadIO m) =>
-  TVHashMap Int64 TVUser -> Key record -> m MaybeTVUser
-lookupUserKey tvUsers = lookupUserId tvUsers . P.fromSqlKey
+--lookupUserKey :: (ToBackendKey SqlBackend record, MonadIO m) =>
+--  TVHashMap Int64 TVUser -> Key record -> m MaybeTVUser
+--lookupUserKey tvUsers = lookupUserId tvUsers . P.fromSqlKey
 
 
 
-
-modifyUserConnDB :: TVHashMap Int64 TVUser -> Int64
-                 -> [P.Update DB.User] -> (User -> User) -> Handler ()
-modifyUserConnDB tvUserConns userId dbUpdates connUpdate = do
+modifyUser :: TVHashMap Int64 TVUser -> Int64
+           -> [P.Update DB.User] -> (User -> User) -> Handler ()
+modifyUser tvUser userId dbUpdates f = do
   runDB $ P.update (P.toSqlKey userId) dbUpdates
-  atomically $ modifyUserConn tvUserConns userId connUpdate
+  atomically $ do
+    maybeTVUser <- HashMap.lookup userId <$> readTVar tvUser
+    forM_ maybeTVUser $ \tvUser -> modifyTVar' tvUser f
 
 modifyUserConn :: TVHashMap Int64 TVUser
                -> Int64 -> (User -> User) -> STM ()

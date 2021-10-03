@@ -11,7 +11,7 @@ import Import.NoFoundation
 
 
 data User = User
-  {_userId             :: Int64
+  {_userId             :: UserId
   ,_accountInfo        :: AccountInfo
   ,_creatorInfo        :: Maybe TVCreator
   ,_moderation         :: UserModeration
@@ -47,8 +47,8 @@ data TwitchConn = TwitchConn
   ,twitchLogin        :: Text
   ,twitchEmail        :: Text
   ,twtichCreatedTime  :: Int
-  ,twitchFollowTime   :: Int
-  ,twitchIsSubscriber :: Int
+  ,twitchFollowTime   :: Maybe Int
+  ,twitchIsSubscriber :: Maybe Int
   } deriving Show
 
 -- User Moderation
@@ -81,15 +81,14 @@ type Role = Either Chatter TVSpecialRole
 
 data Chatter = Chatter
   {_months :: Int
-  ,_subscription :: Maybe Subscription
-  } deriving Show
+  ,_subscription :: Maybe (TVar Subscription)
+  }
 
 data SpecialRole = SpecialRole
   {_roleId   :: Int64
   ,_roleName :: Text
   ,_power    :: Int -- streamer, mods, vips
   ,_order    :: Int
-
   } deriving Show
 type TVSpecialRole = TVar SpecialRole
 
@@ -289,19 +288,17 @@ type TVCreator = TVar Creator
 
 -- combination of DB.ActiveSubscription and DB.Subscription
 data Subscription = Subscription
-  {_subberId        :: Int64
+  {_subscriptionId  :: Int64
   ,_paymentId       :: Int64
-  ,_subId           :: Int64
-  ,_subTier         :: Int
-  ,_maybeGifterId   :: Maybe Int64 -- UserId
+  ,_subber          :: TVUser
+  ,_maybeGifter     :: Maybe TVUser
+  ,_tier            :: Int
   ,_is3MonthPackage :: Bool
   ,_subMessage      :: Text
   ,_subSource       :: Text
   ,_recurring       :: Bool
   ,_endTime         :: Int
-  } deriving Show
-
-
+  }
 
 
 

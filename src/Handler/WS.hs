@@ -40,6 +40,7 @@ import Prefoundation
 import Streamer
 import UnliftIO (readTVarIO)
 import UnliftIO.STM (writeTVar)
+import Internal.Handy.NoFoundation (getCurrentTime)
 
 getWSR :: Handler ()
 getWSR = webSockets ws
@@ -53,10 +54,10 @@ there are 3 stages to ws
 ws :: WebSocketsT Handler ()
 ws = do
   App {..} <- lift getYesod
-  maybeCurrentUser <- lift currentUser
+  maybeCurrentUser <- lift getCurrentUser
   -- STAGE 1: setup user connection and tqueue for this ws connection
   let defaultGESub = GESub False False False -- NOTE 1
-  myConnId <- currentTime
+  myConnId <- getCurrentTime
   (myTQGlobal, permissions, maybeLoggedIn) <- atomically $ do
     -- myTQGlobal receives all permited global events
     -- i.e. main chat messages, stream status updates, shout out box notifications
@@ -79,7 +80,7 @@ ws = do
         permissions <- getRolePower _role
         return (permissions, Just (tvCurrentUser, tqNotifications))
     return (myTQGlobal, permissions, maybeLoggedIn)
-  wsState@ WSState {..} <- WSState myConnId permissions <$> (newTVarIO =<< currentTime)
+  wsState@ WSState {..} <- WSState myConnId permissions <$> newTVarIO myConnId
 
   -- STAGE 2: Main Loop
   -- do all actions forever until an exception
@@ -114,7 +115,7 @@ pingPong WSState{..} = do
     Left _ -> stop
     Right _ -> do
       liftIO $ threadDelay $ 10 * seconds
-      currentTime <- currentTime
+      currentTime <- getCurrentTime
       timeAtLastPong <- readTVarIO tvTimeAtLastPong
       if 10 * seconds > timeAtLastPong - currentTime
          then do sendClose ("Close" :: Text)
@@ -128,7 +129,7 @@ pingPong WSState{..} = do
 
 processWSRequest :: WSState -> Maybe LoggedIn -> BS.ByteString -> WSResult
 processWSRequest WSState{..} _ "PONG" = do
-  currentTime <- currentTime
+  currentTime <- getCurrentTime
   atomically $ writeTVar tvTimeAtLastPong currentTime
   continue
 processWSRequest WSState{..} maybeLoggedIn str = flip (maybe continue) (decode str) $ \wsRequest -> do

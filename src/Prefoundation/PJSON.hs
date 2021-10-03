@@ -1,5 +1,6 @@
 module Prefoundation.PJSON where
 
+import Control.Lens hiding ((.=))
 import qualified Data.HashMap.Strict as HashMap
 
 import Import.NoFoundation
@@ -12,6 +13,9 @@ type PValue = Int -> Value
 class ToPermittedJSON a where
   toPJSON_ :: a -> STM (Int -> [(Text,Value)])
   --toPJSON_ :: MonadIO m => a -> m (Int -> [(Text,Value)])
+
+toPJSON_' :: ToPermittedJSON a => a -> STM [(Text,Value)]
+toPJSON_' v = toPJSON_ v ?? 2
 
 toPJSON :: ToPermittedJSON a => a -> STM PValue
 toPJSON v = object <$$> toPJSON_ v
@@ -27,18 +31,18 @@ instance ToPermittedJSON GlobalEvent where
       toMessageJSON <- toPJSON_ chatMessage
       return $ \permissions ->
         ("type" .= ("main_chat" :: Text)) : toMessageJSON permissions
-    StreamStatusGlobalEvent streamStatus -> 
+    StreamStatusGlobalEvent streamStatus ->
       let serviceJSON stream = case stream of
             TwitchStream stream -> "twitch" .= stream
             YouTubeStream stream -> "youtube" .= stream
       in return $ \_ -> case streamStatus of
-           Streaming {..} -> 
+           Streaming {..} ->
              ["type" .= ("streaming" :: Text)
              ,serviceJSON _stream
              ,"title" .= _title
              ,"start_time" .= _startTime
              ,"viewer_count" .= _viewerCount]
-           Hosting {..} -> 
+           Hosting {..} ->
              ["type" .= ("hosting" :: Text)
              ,serviceJSON _stream
              ,"title" .= _title]
@@ -69,6 +73,7 @@ instance ToPermittedJSON ModEvent where
 instance ToPermittedJSON User where
   toPJSON_ User{..} = do
     toRoleJSON <- toPJSON _role
+    nameColorJSON <- nameColorJSON _role _nameColor
     return $ \permissions ->
       ["username" .= _username
       ,"role" .= toRoleJSON permissions
@@ -76,7 +81,7 @@ instance ToPermittedJSON User where
            (toList (_firstBadge _badges)
          ++ toList (_secondBadge _badges))
       ,"pronouns" .= _pronouns
-      ,"name_color" .= nameColorJSON _role _nameColor
+      ,"name_color" .= nameColorJSON
       ] ++ whem (permissions >= 1)
       []
 
@@ -86,9 +91,23 @@ instance ToPermittedJSON Role where
     ["special" .= _roleName
     ,"order" .= _order]
   --toPJSON_ permissions (Left (Chatter 0 _)) = return []
-  toPJSON_ (Left Chatter{..}) = return $ \permissions ->
-    ["months" .= _months
-    ,"tier" .= maybe 0 _subTier _subscription]
+  toPJSON_ (Left Chatter{..}) = do
+    maybeSub <- _subscription `for` readTVar
+    maybeSubscriptionJSON <- maybeSub `for` toPJSON_
+    return $ \permissions ->
+      ["months" .= _months
+      ,"subscription" .= (maybeSubscriptionJSON ?? permissions)]
+
+
+instance ToPermittedJSON Subscription where
+  toPJSON_ Subscription{..} = do
+    maybeGifterName <- _maybeGifter `for` (fmap _username . readTVar)
+    return $ \permissions ->
+      ["tier" .= _tier
+      ] ++ whem (permissions >= 2)
+      ["gifter" .= maybeGifterName
+      ]
+
 
 
 instance ToPermittedJSON ChatEvent where
@@ -155,20 +174,25 @@ instance ToPermittedJSON StreamStatus where
 
 
 
-nameColorJSON :: Role -> NameColor -> Value
+nameColorJSON :: Role -> NameColor -> STM Value
 nameColorJSON role nameColor =
   let defaultColor = toJSON $ case _defaultNameColor nameColor of
         Left a -> a
         Right a -> a
       maybeLeft = maybe defaultColor toJSON $ _left nameColor
-  in case role of
-       Left (Chatter _ Nothing) -> defaultColor
-       Left (Chatter _ (Just sub)) | _subTier sub == 1 -> defaultColor
-       Left (Chatter _ (Just sub)) | _subTier sub == 2 -> toJSON maybeLeft
-       _ -> case (_left nameColor, _right nameColor) of
+      gradient = case (_left nameColor, _right nameColor) of
          (Just left, Just right) -> object
            ["left" .= left
            ,"right" .= right
            ,"mode" .= _mode nameColor
            ]
          _ -> toJSON maybeLeft
+  in case role of
+       Left (Chatter _ Nothing) -> return defaultColor
+       Left (Chatter _ (Just tvSub)) -> do
+         Subscription{..} <- readTVar tvSub
+         return $ case _tier of
+           1 -> defaultColor
+           2 -> toJSON maybeLeft
+           _ -> gradient
+       _ -> return $ gradient

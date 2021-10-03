@@ -59,26 +59,28 @@ getMyProfileR = apiIfLoggedIn $ \tvCurrentUser User{..} -> do
   --      ,"subscription" .= maybeSubscription
   --      ,"can_post_links" .= (isRight _role || isSafeUser _moderation)
   --      ]
-  roleJSON <- atomically $ toPJSON' _role
+  roleJSON <- atomically $ toPJSON_' _role
   jsonResponse "get_profile"
     ["account" .= object
       ["email" .= _userEmail
       ,"num_months_subbed" .= _numMonthsSubbed
       ,"season" .= _season
-      --,"twitch_conn" .= _twitchConn
-      --,"google_conn" .= _googleConn
+      ,"twitch_conn" .= isJust _twitchConn
+      ,"google_conn" .= False
+      ,"twitter_conn" .= False
+      ,"reddit_conn" .= False
+      ,"discord_conn" .= False
       ]
     ,"username" .= _username
-    ,"role" .= roleJSON
+    ,"role" .= object (roleJSON ++
+      ["can_post_links" .= isSafeUser _moderation])
     ,"badges" .= _badges
     ,"pronouns" .= _pronouns
     ,"name_color" .= object
       ["default_name_color" .= toJSON (case _defaultNameColor _nameColor of
         Left color -> show color
         Right color -> show color)
-      ,"is_random" .= toJSON (case _defaultNameColor _nameColor of
-        Left _ -> True
-        _ -> False)
+      ,"is_random" .= toJSON (isLeft $ _defaultNameColor _nameColor)
       ,"left" .= _left _nameColor
       ,"right" .= _right _nameColor
       ,"mode" .= show (_mode _nameColor)
@@ -95,11 +97,11 @@ getMyProfileR = apiIfLoggedIn $ \tvCurrentUser User{..} -> do
 
 postMyProfileR :: Handler Value
 postMyProfileR = do
+  App {..} <- getYesod
   profileRequest <- (requireCheckJsonBody :: Handler ProfileRequest)
   apiIfLoggedIn $ \tvCurrentUser User{..} -> do
-    App {..} <- getYesod
     let StreamerInfo {..} = streamerInfo
-        modifyUser = modifyUserConnDB tvUsers _userId
+        modifyCurrentUser = modifyUser tvUsers _userId
           --writeTVar tvUserConns =<< flip2 HashMap.alterF _userId userConns ¢
           --  traverse ¢ \(user, threads) -> do
           --    traverse (flip writeTQueue $ SelfUpdate $ f user) $ HashMap.elems threads
@@ -127,7 +129,7 @@ postMyProfileR = do
         -- 1 == Valid
         -- 2 == Invalid format
         -- 3 == Invalid language
-        when (setResult == 1) $ modifyUser
+        when (setResult == 1) $ modifyCurrentUser
           [DB.UserPronouns =. Just newPronouns]
           $ set pronouns $ Just newPronouns
         jsonResponse "set_pronouns"
@@ -143,7 +145,7 @@ postMyProfileR = do
                         ,Just name, _secondBadge _badges)
                    _ -> (secondBadge, DB.UserSecondBadge
                         ,_firstBadge _badges, Just name)
-             modifyUser
+             modifyCurrentUser
                [dbBadge  =. Just name]
                $ set (badges . stmBadge) $ Just name
              jsonResponse "equip_badge"
@@ -154,7 +156,7 @@ postMyProfileR = do
               then _firstBadge _badges else _secondBadge _badges
             newSecondBadge = if position /= 2
               then _secondBadge _badges else Nothing
-        modifyUser
+        modifyCurrentUser
           [DB.UserFirstBadge  =. newFirstBadge
           ,DB.UserSecondBadge =. newSecondBadge]
           $ over badges $ set firstBadge newFirstBadge
@@ -163,7 +165,7 @@ postMyProfileR = do
           ["first_badge" .= newFirstBadge
           ,"second_badge" .= newSecondBadge]
       SetDefaultColor maybeColor -> do
-        modifyUser
+        modifyCurrentUser
           [DB.UserDefaultColor =. fmap showText maybeColor]
           $ over (nameColor . defaultNameColor) $ \color ->
               case (color, maybeColor) of
@@ -191,7 +193,7 @@ postMyProfileR = do
              when (Just newLeft  /= _left  _nameColor
                 || Just newRight /= _right _nameColor
                 || newMode       /= _mode  _nameColor) $ void $ do
-               modifyUser
+               modifyCurrentUser
                  [DB.UserColorMode    =. showText newMode
                  ,DB.UserColorLeftH   =. Just (_hue         newLeft)
                  ,DB.UserColorLeftCL  =. Just (_chromaLight newLeft)

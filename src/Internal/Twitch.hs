@@ -56,19 +56,17 @@ import Streamer
 
 
 -- automatically validated
-getTwitchUserFull :: MonadIO m => TwitchTokens
-                               -> m (Maybe (TwitchAuthInfo, TwitchUser
-                                           ,Int, Int))
+getTwitchUserFull :: MonadIO m => TwitchTokens -> m (Maybe (TwitchAuthInfo, TwitchUser, Maybe Int, Maybe Int))
 getTwitchUserFull tokens = validateToken tokens >>= \case
   TwitchRevoked -> do putStrLn "Plz Revoke" -- TODO Revoke
                       return Nothing
-  userAuthInfo@(TwitchAuthInfo tokens (TwitchAccount {..})) -> runMaybeT $ do
-    twitchUser <- MaybeT $ getTwitchUser_ tokens
-    twitchFollowInfo <- MaybeT $ getTwitchFollowInfo_ tokens twitchId
-    twitchSubInfo <- MaybeT $ getTwitchSubInfo_ tokens twitchId
-    return $ (userAuthInfo, twitchUser
-             ,followedAt twitchFollowInfo
-             ,twitchSubTier twitchSubInfo)
+  userAuthInfo@(TwitchAuthInfo tokens TwitchAccount{..}) -> 
+    getTwitchUser_ tokens >>== \twitchUser -> do
+      twitchFollowInfo <- getTwitchFollowInfo_ tokens twitchId
+      twitchSubInfo <- getTwitchSubInfo_ tokens twitchId
+      return $ Just (userAuthInfo, twitchUser
+                    ,followedAt <$> twitchFollowInfo
+                    ,twitchSubTier <$> twitchSubInfo)
 
 
 
@@ -124,7 +122,7 @@ getTwitchUser_ (TwitchTokens {..}) =
 
 
 validateToken :: MonadIO m => TwitchTokens -> m TwitchAuthInfo
-validateToken (tokens@TwitchTokens {..}) = do
+validateToken tokens@TwitchTokens{..} = do
   let Secrets {..} = streamerSecrets
   response1 <- SHttp.httpJSONEither
     $ setRequestHeader "Authorization" ["OAuth " ++ encodeUtf8 accessToken]
@@ -219,12 +217,15 @@ instance FromJSON TwitchSubInfo where
 
 
 
+returnBody :: (MonadIO m, Show a1, Show a2)
+           => Response (Either a1 a2) -> m (Maybe a2)
 returnBody response = case responseBody response of
   Right x -> return $ Just x
   Left _ -> do showTwitchResponseError response
                return Nothing
 
 
+showTwitchResponseError :: (MonadIO m, Show a) => Response a -> m ()
 showTwitchResponseError response = case getResponseStatusCode response of
   400 -> do putStrLn "ERROR Twitch Request: Bad Request\n"
             putStrLn $ Text.pack $ show response -- unknown error
@@ -236,6 +237,7 @@ showTwitchResponseError response = case getResponseStatusCode response of
 
 
 
+rfc3339Json :: MonadFail m => Text -> m Int
 rfc3339Json rfc3339Time = case rfc3339ToPOSIXSeconds rfc3339Time of
   Just a -> return a
   _ -> fail "Failed To Parse RFC3339 Format"

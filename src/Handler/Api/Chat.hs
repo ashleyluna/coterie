@@ -32,8 +32,8 @@ import Streamer
 postChatR :: Handler Value
 postChatR = apiIfLoggedIn $ \tvCurrentUser currentUser@User {..} -> do
   App {..} <- getYesod
-  currentTime <- currentTime
-  let modifyUser = modifyUserConnDB tvUsers _userId
+  currentTime <- getCurrentTime
+  let modifyCurrentUser = modifyUser tvUsers _userId
       dbUserId = P.toSqlKey _userId
       sendMessage tvar message sendEvent = do
         modifyTVar' tvar $ IntMap.insert currentTime message
@@ -51,8 +51,11 @@ postChatR = apiIfLoggedIn $ \tvCurrentUser currentUser@User {..} -> do
               MainChatGlobalEvent . AddUserMessage currentUser
             limitChat tvMainChat
           delayMessage = do
-            atomically $ sendMessage tvMainChat userMessage $
+            atomically $ sendMessage tvMainChatDelayed userMessage $
               ModGlobalEvent . AddDelayedUserMessage currentUser
+            -- TODO Server Settings
+            --delayTime <- readTVarIO tvMessageDelayTime
+            --liftIO $ threadDelay $ delayTime * seconds
             liftIO $ threadDelay $ 2 * seconds
             atomically $ do
               mainChatDelayed <- readTVar tvMainChatDelayed
@@ -85,7 +88,7 @@ postChatR = apiIfLoggedIn $ \tvCurrentUser currentUser@User {..} -> do
                     streamStatus <- readTVarIO tvStreamStatus
                     isMessageMeaningful <- isMessageMeaningful message
                     when (isMessageMeaningful && isStreaming streamStatus) $
-                      modifyUser
+                      modifyCurrentUser
                         [DB.UserMeaningfulMessages =. _meaningfulMessages _moderation + 1]
                         $ over (moderation . meaningfulMessages) (+ 1)
                     jsonResponse "message" []
@@ -113,14 +116,15 @@ postChatR = apiIfLoggedIn $ \tvCurrentUser currentUser@User {..} -> do
           else ["meaningful_messages" .= _meaningfulMessages _moderation
                --,"mod_actions" .= ([] :: [Int])
                ]
-        (permissions, toRoleJSON) <- atomically $ (,) <$> getRolePower _role <*> toPJSON_ _role
+        (permissions, toRoleJSON, nameColorJSON) <- atomically $ (,,) <$>
+          getRolePower _role <*> toPJSON_ _role <*> nameColorJSON _role _nameColor
         jsonResponse "get_user_info" $
           ["role" .= toRoleJSON permissions
           ,"badges" .= toJSON
                (toList (_firstBadge _badges)
              ++ toList (_secondBadge _badges))
           ,"pronouns" .= _pronouns
-          ,"name_color" .= nameColorJSON _role _nameColor
+          ,"name_color" .= nameColorJSON
           ,"account_creation" .= _userCreationTime _accountInfo
           ,"power" .= permissions
           ,"season" .= _season _accountInfo

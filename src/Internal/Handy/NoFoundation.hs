@@ -74,8 +74,8 @@ mkQuery :: a -> b -> (a, Maybe b)
 mkQuery a b = (a, Just b)
 
 -- in micro seconds
-currentTime :: MonadIO m => m Int
-currentTime = round . (* 1000000) <$> liftIO POSIX.getPOSIXTime
+getCurrentTime :: MonadIO m => m Int
+getCurrentTime = round . (* 1000000) <$> liftIO POSIX.getPOSIXTime
 
 rfc3339ToPOSIXSeconds :: Text -> Maybe Int
 rfc3339ToPOSIXSeconds time = round . utcTimeToPOSIXSeconds . zonedTimeToUTC <$>

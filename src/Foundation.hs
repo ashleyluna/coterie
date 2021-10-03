@@ -42,6 +42,7 @@ import qualified Model as DB
 import Streamer
 
 import Prefoundation
+import Data.ByteString.Char8 (putStr)
 
 -- | The foundation datatype for your application. This can be a good place to
 -- keep settings and values requiring initialization before your application
@@ -53,6 +54,9 @@ data App = App
   , appConnPool           :: ConnectionPool -- ^ Database connection pool.
   , appHttpManager        :: Manager
   , appLogger             :: Logger
+  ------------------------------------------------------------------------------
+  -- Server Settings
+  --, tvMessageDelayTime      :: TVar Int
   ------------------------------------------------------------------------------
   -- Web Socket Connections
   -- write global events
@@ -90,7 +94,7 @@ data App = App
   --, pointsRewards    :: UnSet.HashSet PointsReward
 
   -- Payment
-  , tvSubscriptions       :: TVHashMap Int64 Subscription -- userId
+  , tvSubscriptions       :: TVHashMap Int64 (TVar Subscription) -- userId
   }
 
 
@@ -282,10 +286,19 @@ instance YesodAuth App where
 
     -- You can add other plugins like Google Email, email or OAuth here
     authPlugins :: App -> [AuthPlugin App]
-    authPlugins (App {..}) =
+    authPlugins App{..} =
       let Secrets {..} = streamerSecrets
       in [oauth2GoogleScoped ["email"] googleClientId googleClientSecret
          ]
+
+data UserAuth = TwitchAuth
+              | GoogleAuth
+
+getByUserAuth plugin pluginId = case plugin of
+  TwitchAuth -> getBy (DB.UniqueTwitchId pluginId) >>== \(Entity key _) ->
+    getBy $ DB.UniqueTwitchAuth $ Just key
+  GoogleAuth -> getBy (DB.UniqueGoogleId pluginId) >>== \(Entity key _) ->
+    getBy $ DB.UniqueGoogleAuth $ Just key
 
 -- TODO do I need this?
 -- | Access function to determine if a user is logged in.
@@ -296,14 +309,6 @@ isAuthenticated = do
         Nothing -> Unauthorized "You must login to access this page"
         Just _ -> Authorized
 
-data UserAuth = TwitchAuth
-              | GoogleAuth
-
-getByUserAuth plugin pluginId = case plugin of
-  TwitchAuth -> getBy (DB.UniqueTwitchId pluginId) >>== \(Entity key _) ->
-    getBy $ DB.UniqueTwitchAuth $ Just key
-  GoogleAuth -> getBy (DB.UniqueGoogleId pluginId) >>== \(Entity key _) ->
-    getBy $ DB.UniqueGoogleAuth $ Just key
 
 instance YesodAuthPersist App
 
